@@ -10,6 +10,7 @@ def assign_layer(blk_wh_dict:dict, num_layer:int) -> OrderedDict:
     blk_items = sorted(blk_wh_dict.items(), key=lambda x: x[1]['w'] * x[1]['h'], reverse=True)
     print(blk_items)
 
+    # (layer_each_layer, area_sum_each_layer)
     item_each_layer = [ [] for _ in range(num_layer) ]
     area_sum_each_layer = [ 0 for _ in range(num_layer) ]
 

@@ -17,6 +17,7 @@ def discretize(block_info:List[Block], terminal_info:List[Terminal], x_grid_num:
         grid_width  = original_outline_width  / x_grid_num
         grid_height = original_outline_height / y_grid_num
 
+        # The size of the canvas
         canvas = defaultdict(lambda: torch.zeros(x_grid_num, y_grid_num).to(torch.int))
 
         for block in block_info:
@@ -121,8 +122,10 @@ class FPInfo:
     @torch.no_grad()
     def get_overlap(self, norm:bool=True) -> int:
         overlap = (self.canvas - 1).clamp_min_(0).sum().item()
+        #print("self.canvas: ", self.canvas.shape, "overlap: ", overlap)
         if norm:
-            overlap /= (self.canvas.shape[1] * self.canvas.shape[2])
+        # divide the number of dies
+            overlap /= (self.canvas.shape[0] * self.canvas.shape[1] * self.canvas.shape[2])
         return overlap
 
 
@@ -151,10 +154,15 @@ class FPInfo:
         for block in self.block_info:
             block.reset()
         
+        net_id = 0
+        # print("net reset begin")
         for net in self.net_info:
             net.reset()
             net.init_layer_num_pin(self.num_layer)
-        
+            # print("net_id: ", net_id)
+            # net.show_layer_num_pin()
+        # print("net reset end")
+            
         self.placed_movable_block_num = 0
 
         self.reset_canvas()
@@ -184,6 +192,34 @@ class FPInfo:
         for net in self.net_info:
             num_via += net.is_cut()
         return num_via
+    
+    def check_net_init_status(self) -> bool:
+        init_flag = True
+        for net in self.net_info:
+            init_flag = net.is_init_status()
+        return init_flag
+
+    def calc_area_ratio(self) -> float:
+        area_layer = [0.0 for id in range(self.num_layer)]
+        for block_id, block in enumerate(self.block_info):
+            if block.placed:
+                area_layer[block.grid_z] += float(block.grid_w * block.grid_h)
+        if area_layer[1] == 0:
+            area_ratio = 10000000
+        else:
+            area_ratio = area_layer[0] / area_layer[1]
+        return area_ratio
+
+    def calc_num_ratio(self) -> float:
+        num_block_layer = [0.0 for id in range(self.num_layer)]
+        for block_id, block in enumerate(self.block_info):
+            if block.placed:
+                num_block_layer[block.grid_z] += 1.0
+        if num_block_layer[1] == 0:
+            num_block_ratio = 10000000
+        else:
+            num_block_ratio = num_block_layer[0] / num_block_layer[1]
+        return num_block_ratio
 
     def calc_original_hpwl(self) -> float:
         """calculate HPWL for all nets."""

@@ -19,7 +19,10 @@ class ClipLossCoef:
     def __init__(self, pos_coef:float, ratio_coef:float, async_place_coef:float) -> None:
         self.pos = pos_coef
         self.ratio = ratio_coef
-        self.layer = async_place_coef
+        # self.layer = async_place_coef
+        # layer
+        self.layer = async_place_coef / 2.0
+        # self.layerdst = async_place_coef / 2.0
         # self.layer_next = async_place_coef
     
     def __repr__(self) -> str:
@@ -35,7 +38,8 @@ class EntropyLossCoef:
     def __init__(self, pos_coef:float=1.0, ratio_coef:float=1.0, async_place_coef:float=1.0) -> None:
         self.pos = pos_coef
         self.ratio = ratio_coef
-        self.layer = async_place_coef
+        self.layer = async_place_coef / 2.0
+        self.layerdst = async_place_coef / 2.0
         # self.layer_next = async_place_coef
     
     def __repr__(self) -> str:
@@ -230,6 +234,10 @@ class PPOPolicy(A2CPolicy):
                     clip_loss = 0
                     minibatch.act = to_torch(minibatch.act, device=self.device)
                     minibatch.logp_old = to_torch(minibatch.logp_old, device=self.device)
+                    # print(dist.keys())
+                    # print(dir(self.clip_loss_coef))
+                    # print(minibatch.act.keys())
+                    # print(minibatch.logp_old.keys())
                     for key in dist.keys():
                         clip_loss_curr = self.clip_loss(dist[key], minibatch.act[key], minibatch.logp_old[key], minibatch.adv)
                         clip_loss = clip_loss + clip_loss_curr * getattr(self.clip_loss_coef, key)

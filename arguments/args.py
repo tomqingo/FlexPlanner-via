@@ -8,7 +8,11 @@ def get_args():
     parser.add_argument('--along_boundary', '-b', type=int, default=1, help='along boundary')
     parser.add_argument('--num_grid_x', type=int, default=64, help='number of grid x')
     parser.add_argument('--num_grid_y', type=int, default=64, help='number of grid y')
-    parser.add_argument('--circuit', '-c', type=str, default="n10", help='circuit name')
+    parser.add_argument('--circuit', '-c', type=str, default="nangate45_bp", help='circuit name')
+    parser.add_argument('--impl', type=str, default="nangate45", help='pdk name')
+    parser.add_argument('--design', type=str, default="bp", help='design name')
+
+    # parser.add_argument('--circuit', '-c', type=str, default="sky130hd_fakestack_ariane136", help='circuit name')
     parser.add_argument('--result_dir', '-r', type=str, default="result-debug", help='result directory')
     parser.add_argument('--area_util', '-u', type=float, default=1.6, help='area utilization')
     parser.add_argument('--seed', type=int, default=3407, help='random seed')
@@ -109,6 +113,8 @@ def get_args():
     parser.add_argument('--input_layer_sequence', type=int, default=0, help='input layer sequence to layer decider')
 
     args = parser.parse_args()
+
+    print("args.impl: ", args.impl, "args.design: ", args.design)
 
     args.wiremask_bbo = True if args.wiremask_bbo > 0 else False
     args.along_boundary = True if args.along_boundary > 0 else False

@@ -226,28 +226,37 @@ class BaseTrainer(ABC):
         self.logger = logger
         self.start_time = time.time()
         self.stat: DefaultDict[str, MovAvg] = defaultdict(MovAvg)
+
+        # best_reward, best_hpwl, best_original_hpwl
         self.best_reward = 0.0
         self.best_reward_std = 0.0
         self.best_hpwl = 0.0
         self.best_hpwl_std = 0.0
         self.best_original_hpwl = 0.0
         self.best_original_hpwl_std = 0.0
+
         self.start_epoch = start_epoch
         self.gradient_step = 0
         self.env_step = 0
         self.max_epoch = max_epoch
         self.step_per_epoch = step_per_epoch
 
-        # either on of these two
+        # either on of these two step (step_per_collect)
         self.step_per_collect = step_per_collect
+        # 240 steps in a epoch = buffer size (number of the interactions with the environment)
         # print("step_per_epoch: ", step_per_epoch)
         # print("step per collect: ", step_per_collect)
 
+        # episode_per_collect (number of the enviroments)
         self.episode_per_collect = episode_per_collect
+        # print("episode_per_collect: ", self.episode_per_collect)
 
         self.update_per_step = update_per_step
+
+        # repeat the training data with the same data
         self.repeat_per_collect = repeat_per_collect
 
+        # the number of episodes in the test case
         self.episode_per_test = episode_per_test
 
         self.batch_size = batch_size
@@ -361,16 +370,19 @@ class BaseTrainer(ABC):
             progress = DummyTqdm
 
         # perform n step_per_epoch
+        # print("step_per_epoch: ", self.step_per_epoch)
+
         with progress(
             total=self.step_per_epoch, desc=f"Epoch #{self.epoch}", **tqdm_config
         ) as t:
-            #print("n/total: ", t.n, self.step_per_epoch)
+            # print("n/total: ", t.n, self.step_per_epoch)
             while t.n < t.total and not self.stop_fn_flag:
-                # print(t.n, t.total)
+                # print("t.n: ", t.n, "t.total: ", t.total)
                 # print(self.epoch, self.step_per_epoch)
                 data: Dict[str, Any] = dict()
                 result: Dict[str, Any] = dict()
 
+                # print("train_collector: ",  self.train_collector)
                 if self.train_collector is not None:
                     data, result, self.stop_fn_flag = self.train_step()
                     # print(data)
@@ -384,12 +396,15 @@ class BaseTrainer(ABC):
                     result["n/st"] = int(self.gradient_step)
                     t.update()
 
+                # policy update
                 policy_update_start_time = time.time()
                 self.policy_update_fn(data, result)
                 policy_update_time = round(time.time() - policy_update_start_time)
                 print(f"Policy update time: {policy_update_time}s")
 
                 t.set_postfix(**data)
+                # print("t.n: ", t.n, "t.total: ", t.total)
+                # print("self.stop_fn_flag: ", self.stop_fn_flag)
 
             if t.n <= t.total and not self.stop_fn_flag:
                 t.update()
@@ -435,6 +450,8 @@ class BaseTrainer(ABC):
                     "n/st": int(result["n/st"]),
                 }
             )
+
+            # the information in several environments into one environment
             info = gather_info(
                 self.start_time, self.train_collector, self.test_collector,
                 self.best_reward, self.best_reward_std
@@ -459,6 +476,8 @@ class BaseTrainer(ABC):
         overlap, overlap_std = test_result["overlap"], test_result["overlap_std"]
         original_hpwl, original_hpwl_std = test_result["original_hpwl"], test_result["original_hpwl_std"]
         alignment, alignment_std = test_result["alignment"], test_result["alignment_std"]
+        area_ratio, area_ratio_std = test_result["area_ratio"], test_result["arearatio_std"]
+        num_ratio, num_ratio_std = test_result["num_ratio"], test_result["numratio_std"]
         layer_sum_first_half_seq, layer_sum_first_half_seq_std = test_result["layer_sum_first_half_seq"], test_result["layer_sum_first_half_seq_std"]
         next_layer_valid, next_layer_valid_std = test_result["next_layer_valid"], test_result["next_layer_valid_std"]
 
@@ -482,7 +501,8 @@ class BaseTrainer(ABC):
         
         print("original hpwl: ", original_hpwl, "via: ", via)
         print("best original hpwl: ", self.best_original_hpwl, "best_via: ", self.best_via)
-
+        print("area ratio: ", area_ratio)
+        print("num_ratio", num_ratio)
 
         if self.verbose:
             print(
@@ -547,10 +567,15 @@ class BaseTrainer(ABC):
         assert self.train_collector is not None
         stop_fn_flag = False
         # print("train_fn: ", self.train_fn)
+        # train_fn
+        # print("train step train_fn: ", self.train_fn)
         if self.train_fn:
             self.train_fn(self.epoch, self.env_step)
         
         # collect the data into the collection
+        # train: 8 test: 2
+        print("n_step: ", self.step_per_collect, "n_episode: ", self.episode_per_collect)
+
         collect_time_start = time.time()
         result = self.train_collector.collect(
             n_step=self.step_per_collect, n_episode=self.episode_per_collect

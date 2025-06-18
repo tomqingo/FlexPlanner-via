@@ -86,12 +86,21 @@ class LayerDecider(nn.Module):
         # final header
         if input_dim_final_layer == num_die:
             self.final_header = nn.Identity() # no additional feature to concat, so the final header is just an identity
+            # layer
+            # self.final_dst_header = nn.Identity() # predict the dst layer
         else:
             self.final_header = nn.Sequential(
                 nn.Linear(input_dim_final_layer, input_dim_final_layer),
                 nn.ReLU(),
                 nn.Linear(input_dim_final_layer, num_die)
             )
+
+            # layer
+            # self.final_dst_header = nn.Sequential(
+            #     nn.Linear(input_dim_final_layer, input_dim_final_layer),
+            #     nn.ReLU(),
+            #     nn.Linear(input_dim_final_layer, num_die)
+            # )
 
     def rnn_forward(self, layer_sequence:torch.LongTensor, layer_sequence_mask:torch.BoolTensor, layer_sequence_len:torch.LongTensor) -> torch.Tensor:
         """return the final step of rnn output."""
@@ -128,7 +137,14 @@ class LayerDecider(nn.Module):
         if self.input_layer_sequence:
             rnn_out_final_step = self.rnn_forward(layer_sequence, layer_sequence_mask, layer_sequence_len)
             x = torch.cat([x, rnn_out_final_step], dim=-1) # concat last step
-            
-        x = self.final_header(x)
-        return x
+
+        # choose the source layer 
+        x_src = self.final_header(x)
+
+        # # choose the dst layer
+        # layer
+        # x_dst = self.final_dst_header(x)
+
+        # return x_src, x_dst
+        return x_src
 

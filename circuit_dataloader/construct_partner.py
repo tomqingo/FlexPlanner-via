@@ -25,7 +25,7 @@ def construct_partner_blk(fp_info:FPInfo, num_alignment:int, alignment_sort:str)
 
             if len(tmp0) == 0:
                 break
-            print("tmp0: ", len(tmp0))
+            #print("tmp0: ", len(tmp0))
 
             tmp0.sort(key=lambda x: x.area, reverse=True)
             #print(tmp0[0])

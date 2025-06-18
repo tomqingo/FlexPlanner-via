@@ -1,10 +1,11 @@
-export PYTHONUNBUFFERED=1
-export CUDA_VISIBLE_DEVICES=0
+export PYTHONUNBUFFERED=1design
+export CUDA_VISIBLE_DEVICES=6
 
 
 device=cuda
 num_env=8
-num_env_test=2
+num_env_test=1
+
 overlap_ratio=0.1
 ent_coef=0.01
 num_preplaced_module=0
@@ -13,16 +14,18 @@ num_layer=2
 add_virtual_block=1
 
 
-# circuit=nangate45_ariane133
+# circuit=nangate45_bp_quad
 circuit=nangate45_ariane133
 impl=nangate45
 design=ariane133
+
+# circuit=nangate45_bp
 
 max_epoch=2000
 area_util=1.6
 
 num_grid=128
-train=1
+train=0
 save_fig=5
 lr=1e-4
 batch_size=128
@@ -98,7 +101,9 @@ load_then_collect=1
 # [2] continue training for more epochs: [checkpoint], [load_optimizer], [statistics] and [max_epoch_new]
 # [3] transfer learning: [checkpoint]
 # [4] test: [checkpoint]
-checkpoint=
+# 
+# checkpoint=result/test_ariane133_3/checkpoint/policy-000100.pt
+checkpoint=../FlexPlanner/result/test_bp_3/checkpoint/policy-000350.pt
 load_optimizer=
 statistics=
 max_epoch_new=
@@ -123,11 +128,12 @@ fi
 
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}-E=${shared_encoder_cls}-D=${deconv_class}
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}
-# result_dir=result/test_ariane133_3
-result_dir=result/test_ariane133
+result_dir=../FlexPlanner/result/test_ariane133
+# result_dir=result/test_bp_4
 
 
 # if have defined the variable `checkpoint`, add more comment to the `result_dir`
+# date
 if [ -n "${checkpoint}" ]; then
     if [ ${train} -eq 1 ]; then
         # resume training or fine-tune
@@ -155,7 +161,7 @@ if [ -n "${checkpoint}" ]; then
     cp ${checkpoint} ${result_dir}/finetune_base_checkpoint.pt
 fi
 
-nohup python -u main.py \
+nohup python -u ../FlexPlanner/main.py \
     --circuit ${circuit} \
     --impl ${impl} \
     --design ${design} \
@@ -214,5 +220,3 @@ nohup python -u main.py \
     --deconv_class ${deconv_class} \
     ${additional_args} \
     | tee -a ${result_dir}/log.txt
-
-

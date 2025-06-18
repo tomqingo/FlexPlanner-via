@@ -30,6 +30,7 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
     """
 
     df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
+    # df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk2.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
     blk_wh_dict = {}
     for row in df_blk.itertuples():
         name = row.name
@@ -42,7 +43,7 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
         }
 
         # optional fields
-        # "z"
+        # "x", "y", "z"
         optional_fields = ['x', 'y', 'z', 'preplaced']
         for field in optional_fields:
             if hasattr(row, field):
@@ -51,12 +52,14 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
     blk_wh_dict = OrderedDict(sorted(blk_wh_dict.items()))
     blk_area = (df_blk['w'] * df_blk['h']).sum()
     die_area = blk_area / area_util
+    # large chip_w, chip_h area
     chip_w = chip_h = die_area ** 0.5
-    # print("die area: ", die_area)
-    # print("blk_area: ", blk_area)
-    # print("chip_w: ", chip_w, "chip_h: ", chip_h)
+    print("die area: ", die_area)
+    print("blk_area: ", blk_area)
+    print("chip_w: ", chip_w, "chip_h: ", chip_h)
 
     df_tml = pd.read_csv(os.path.join(root, f"{circuit}.tml.csv"), dtype={'name':str, 'x':float, 'y':float})
+    
     tml_xy_dict = {}
     for row in df_tml.itertuples():
         name = row.name
@@ -72,6 +75,21 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
     # print("tml_xy_dict: ", len(tml_xy_dict))               
     
     return blk_wh_dict, tml_xy_dict, float(chip_w), float(chip_h)
+
+def parse_blk_xyz(circuit: str, root:str="data_openroad")->Dict[str, List[float]]:
+    """
+    Return the (x,y,z) of the blocks given the fp.txt
+    """
+    blk_xyz_dict = {}
+    path = os.path.join(root, f"{circuit}.fp.txt")
+    # path = os.path.join(root, f"{circuit}.fp2.txt")
+    with open(path, "r") as f:
+        for line in f.readlines():
+            line_list = line.strip("\n").split(",")
+            blk_name = line_list[0]
+            blk_x, blk_y, blk_z = float(line_list[1]), float(line_list[2]), float(line_list[-1])
+            blk_xyz_dict[blk_name] = [blk_x, blk_y, blk_z]
+    return blk_xyz_dict
 
 
 def parse_net(circuit:str, root:str="data_openroad") -> List[List[str]]:
@@ -106,6 +124,7 @@ def map_tml(tml_xy_dict:OrderedDict, chip_w:float, chip_h:float) -> Dict[str, Di
 
 
     xy = tml_xy.detach().cpu().numpy()
+    # chip_h, chip_w must be the same
     scaler_x = MinMaxScaler((0, chip_w))
     scaler_y = MinMaxScaler((0, chip_h))
     x = scaler_x.fit_transform(xy[:,0:1])

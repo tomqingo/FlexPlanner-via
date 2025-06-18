@@ -22,6 +22,7 @@ from trainer import OnpolicyTrainer
 # from tianshou.data import Collector
 from collector import Collector, get_statistics
 
+
 import model
 import numpy as np
 from utils import TensorboardWriter
@@ -62,7 +63,7 @@ writer = TensorboardWriter(log_dir=result_dir)
 
 # fp_info
 fp_info, df_partner = circuit_dataloader.construct_fp_info_func(args.circuit, args.area_util, num_grid_x, num_grid_y, 
-                                                    args.num_alignment, args.alignment_rate, args.alignment_sort, args.num_preplaced_module, args.add_virtual_block, args.num_layer)
+                                                    args.num_alignment, args.alignment_rate, args.alignment_sort, args.num_preplaced_module, args.add_virtual_block, args.num_layer, True, True)
 
 #pdb.set_trace()
 
@@ -72,6 +73,7 @@ df_partner.to_csv(os.path.join(result_dir, "partner.csv"), index=False)
 
 # construct shared_encoder
 shared_encoder_input_channel = 3 # canvas, wiremask, position mask
+# What is the input partner die?
 if args.input_partner_die:
     shared_encoder_input_channel += (args.num_layer - 1)
 if args.input_alignment_mask:
@@ -106,10 +108,13 @@ if args.enable_ratio:
     else:
         ratio_decider_input_dim = shared_encoder.input_channels
         ratio_decider_hidden_dim = 4
+    # decide the aspect ratio
     ratio_decider = model.RatioDecider(ratio_decider_input_dim, args.ratio_range, args.ratio_area_in_dim, 
                                        ratio_decider_hidden_dim, args.ratio_share_with_critics, args.input_next_block)
 else:
     ratio_decider = None
+
+# print(ratio_decider)
 
 #print("ratio decider hidden dim:", ratio_decider_hidden_dim)
 # print(ratio_decider)
@@ -128,6 +133,8 @@ if args.async_place:
                                        args.async_place_share_with_critics, args.die_embedding, args.async_place_input_sequence, args.input_layer_sequence)
 else:
     layer_decider = None
+
+# print(layer_decider)
 
 # print(layer_decider)
 
@@ -159,12 +166,22 @@ critic = model.Critic(
 
 optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=args.lr)
 
+# layer
+
+# dist_cls = {
+#     "pos": torch.distributions.Categorical,
+#     "ratio": model.VanillaNormal if args.enable_ratio else None,
+#     "layer": torch.distributions.Categorical if args.async_place else None,
+#     "layerdst": torch.distributions.Categorical if args.async_place else None
+# }
+
 dist_cls = {
     "pos": torch.distributions.Categorical,
     "ratio": model.VanillaNormal if args.enable_ratio else None,
-    "layer": torch.distributions.Categorical if args.async_place else None,
+    "layer": torch.distributions.Categorical if args.async_place else None
 }
 
+print("args.pos_coef", args.pos_coef, "args.ratio_coef", args.ratio_coef, " args.async_place_coef: ",  args.async_place_coef)
 clip_loss_coef = ClipLossCoef(args.pos_coef, args.ratio_coef, args.async_place_coef) # args for clip loss
 entropy_loss_coef = EntropyLossCoef(async_place_coef=args.async_place_entropy_coef) # args for entropy loss
 
@@ -230,8 +247,9 @@ buffer_size = num_env * episode_per_collect_per_env * episode_len
 
 
 # collect statistics
-print("wiremask bbo:", wiremask_bbo, "statistics: ", args.statistics)
-print("num_env_test: ", num_env_test)
+# print("wiremask bbo:", wiremask_bbo, "statistics: ", args.statistics)
+# print("num_env_test: ", num_env_test)
+
 if not wiremask_bbo and args.train:
     if args.statistics is None:
         print("[INFO] Collect statistics for normalization")
@@ -244,12 +262,14 @@ if not wiremask_bbo and args.train:
         print("statistic buffer size: ", statistics_buffer_size)
         print("num_env_test: ", num_env_test)
         statistics_buffer = VectorReplayBuffer(statistics_buffer_size, num_env_test)
-        statistics = get_statistics(collect_envs, statistics_buffer, ppo_policy, statistics_buffer_size // episode_len, args.statistics_method)
+        # two episodes
+        # Why we simply take the average of the whole tradejory
+        statistics = get_statistics(collect_envs, statistics_buffer, ppo_policy, args.impl, args.design, statistics_buffer_size // episode_len, args.statistics_method)
         del statistics_buffer, collect_envs
     else:
         print("[INFO] Load statistics from", args.statistics)
         statistics = utils.load_json(args.statistics)
-    
+
     single_env.set_hpwl_norm_coef(statistics["hpwl"])
     single_env.set_via_norm_coef(statistics["via"])
     utils.save_json(statistics, os.path.join(result_dir, "statistics.json"))
@@ -260,6 +280,8 @@ if not args.load_then_collect and args.checkpoint is not None:
     last_epoch = load_ppo_policy(ppo_policy, args.checkpoint, args.load_optimizer, device)
 
 # construct env (copy the environment into 8/4 pieces, DummyVectorEnv: Sequential update of the envs)
+# training env
+
 train_envs = DummyVectorEnv([lambda: deepcopy(single_env) for _ in range(num_env)])
 test_envs = DummyVectorEnv([lambda: deepcopy(single_env) for _ in range(num_env_test)])
 
@@ -267,15 +289,14 @@ test_envs = DummyVectorEnv([lambda: deepcopy(single_env) for _ in range(num_env_
 train_envs.reset()
 test_envs.reset()
 
-
 # buffer for training
 buffer = VectorReplayBuffer(buffer_size, num_env)
 buffer.reset()
 
 
 # collector
-train_collector = Collector(ppo_policy, train_envs, buffer)
-test_collector = Collector(ppo_policy, test_envs)
+train_collector = Collector(ppo_policy, train_envs, args.impl, args.design, buffer)
+test_collector = Collector(ppo_policy, test_envs, args.impl, args.design)
 
 train_collector.reset()
 test_collector.reset()
@@ -283,6 +304,7 @@ test_collector.set_fig_dir(fig_dir, args.save_fig, last_epoch)
 
 
 # trainer
+print("[INFO] Training started")
 if not wiremask_bbo and args.train:
     onpolicy_trainer = OnpolicyTrainer(
         ppo_policy,
@@ -311,10 +333,12 @@ writer.save_df()
 
 df = pd.DataFrame()
 obs, _ = test_envs.reset()
-# print("obs: ", obs)
+
+print("obs: ", obs)
 
 obs = Batch(obs)
 act_record = defaultdict(lambda: defaultdict(list))
+
 ppo_policy.eval()
 time_start = time.time()
 for iter_idx in tqdm(range(episode_len)):
@@ -344,15 +368,15 @@ for iter_idx in tqdm(range(episode_len)):
     # # save position mask
     env_idx = 0
     fp_info = test_envs.get_env_attr("fp_info", env_idx)[0]
-    if args.save_fig > 0:
-        utils.save_intermediate_floorplan(os.path.join(fig_dir, "mask-env={}-place_order={:03d}.png".format(env_idx, iter_idx)), obs["block"][env_idx], 
-            obs["canvas"][env_idx],
-            obs["position_mask"][env_idx], 
-            obs["wiremask"][env_idx], 
-            obs["alignment_mask"][env_idx] if "alignment_mask" in obs.keys() else None,
-            obs["binary_alignment_mask"][env_idx] if "binary_alignment_mask" in obs.keys() else None,
-            fp_info,
-        )
+    # if args.save_fig > 0:
+    #     utils.save_intermediate_floorplan(os.path.join(fig_dir, "mask-env={}-place_order={:03d}.png".format(env_idx, iter_idx)), obs["block"][env_idx], 
+    #         obs["canvas"][env_idx],
+    #         obs["position_mask"][env_idx], 
+    #         obs["wiremask"][env_idx], 
+    #         obs["alignment_mask"][env_idx] if "alignment_mask" in obs.keys() else None,
+    #         obs["binary_alignment_mask"][env_idx] if "binary_alignment_mask" in obs.keys() else None,
+    #         fp_info,
+    #     )
 
     # set next obs
     obs = obs_next
@@ -369,9 +393,9 @@ for iter_idx in tqdm(range(episode_len)):
                 "original_hpwl": info["original_hpwl"][terminated_idx],
                 "overlap": info["overlap"][terminated_idx],
                 "alignment": info["alignment"][terminated_idx],
-                "distance_adjacent_terminal": info["distance_adjacent_terminal"][terminated_idx],
-                "max_temp": info["max_temp"][terminated_idx],
-                "mean_temp": info["mean_temp"][terminated_idx],
+                # "distance_adjacent_terminal": info["distance_adjacent_terminal"][terminated_idx],
+                # "max_temp": info["max_temp"][terminated_idx],
+                # "mean_temp": info["mean_temp"][terminated_idx],
                 "runtime": time_end - time_start,
             }])], ignore_index=True)
 
@@ -388,7 +412,7 @@ utils.save_json(time, os.path.join(result_dir, "time.json"))
 if args.save_fig > 0 or True:
     for env_idx in range(num_env_test):
         fp_info = test_envs.get_env_attr("fp_info", env_idx)[0]
-        utils.save_final_floorplan(os.path.join(fig_dir, "final-canvas-env={:03d}.png".format(env_idx)), fp_info)
+        utils.save_final_floorplan(os.path.join(fig_dir, "final-canvas-env={:03d}.png".format(env_idx)), fp_info, args.impl, args.design)
 
 
 lock_path = os.path.join(os.path.dirname(__file__), "lock.tmp")

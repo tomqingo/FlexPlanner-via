@@ -1,4 +1,4 @@
-from .parser import parse_blk_tml, map_tml, parse_net
+from .parser import parse_blk_tml, map_tml, parse_net, parse_blk_xyz
 from .construct_partner import construct_partner_blk
 from .construct_layer import assign_layer
 from .construct_pre_placed_module import construct_preplaced_modules
@@ -11,7 +11,8 @@ from collections import defaultdict
 
 
 def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_grid_y:int, num_alignment:int, 
-                           alignment_rate:float, alignment_sort:str, num_preplaced_module:int, add_virtual_block:bool, num_layer:int) -> Tuple[fp_env.FPInfo, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+                           alignment_rate:float, alignment_sort:str, num_preplaced_module:int, add_virtual_block:bool, num_layer:int, read_fp: bool, set_z_only: bool) -> Tuple[fp_env.FPInfo, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    
     alignment_rate = 1.0 if alignment_rate is None else alignment_rate
     # read block and terminal (w,h,virtual)
     blk_wh_dict, tml_xy_dict, outline_width, outline_height = parse_blk_tml(circuit, area_util)
@@ -19,7 +20,10 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     # assign layer (w,h,virtual,z)
     first_blk_wh = next(iter(blk_wh_dict.values()))
+
+    # initialize the levels
     if "z" not in first_blk_wh.keys():
+        # balance the area between the two layers
         print("[INFO] Constructing layer information")
         blk_wh_dict = assign_layer(blk_wh_dict, num_layer)
 
@@ -42,17 +46,37 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
             "y": 0,
         }
 
+    # read and get the floorplan results from the fp.txt
+    blk_xyz_dict = {}
+    if read_fp:
+        blk_xyz_dict = parse_blk_xyz(circuit)
 
     # all blocks, preplaced_blocks + movable_blocks
     preplaced_blocks = []
     movable_blocks = []
+    layer_dict = {0: 0, 1: 0}
+
     for blk_name, blk_info in blk_wh_dict.items():
         if blk_info['preplaced']: # PPM
             preplaced_blocks.append(fp_env.Block(blk_info['x'], blk_info['y'], blk_info['z'], blk_info['w'], blk_info['h'], blk_name, True, blk_info['virtual']))
         else: # movable or virtual
             movable_blocks.append(fp_env.Block(0, 0, blk_info['z'], blk_info['w'], blk_info['h'], blk_name, False, blk_info['virtual']))
-
+            if blk_name in list(blk_xyz_dict.keys()):
+                xyz_list = blk_xyz_dict[blk_name]
+                x_, y_, z_ = xyz_list[0], xyz_list[1], xyz_list[2]
+                # print(x_, y_, z_)
+                if set_z_only:
+                    movable_blocks[-1].set_z(int(z_))
+                    layer_dict[int(z_)] += 1
+                else:
+                    movable_blocks[-1].set_xyz(x_, y_, int(z_))
+                    movable_blocks[-1].placed = True
+    
+    print("layer 0: ", layer_dict[0], "layer 1: ", layer_dict[1])
+    
     block_info = preplaced_blocks + movable_blocks
+
+    
     # blocks
     # print("preplaced_blocks: ", len(preplaced_blocks))
     # print("movable_blocks", len(movable_blocks))
@@ -68,8 +92,8 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     # discretize block and terminal
     block_info, terminal_info, grid_width, grid_height = fp_env.discretize(block_info, terminal_info, num_grid_x, num_grid_y, outline_width, outline_height)
-    # print(len(block_info))
-    # print(len(terminal_info))
+    print("block info: ", len(block_info))
+    print("tml_info: ", len(terminal_info))
     # print(grid_width, grid_height)
 
     # read nets and construct net_info, nets is List[List[str]]
@@ -82,9 +106,11 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     for net_connectors_str in nets_str:
         connector_list = [name2obj[connector_name] for connector_name in net_connectors_str]
-        net = fp_env.Net(connector_list, net_weight)
+        net = fp_env.Net(connector_list, net_weight, read_fp and (not set_z_only))
         # initialize the number of the pins in each layer for different nets
         net.init_layer_num_pin(num_layer)
+        if read_fp and not set_z_only:
+            net.fill_layer_num_pin_withfp()
         net_info.append(net)
 
     # load to fp_info
@@ -109,7 +135,7 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     df_partner = construct_partner_blk(fp_info, num_alignment, alignment_sort)
     #print(df_partner)
-    print("df_partner: ", df_partner)
+    # print("df_partner: ", df_partner)
 
     for row in df_partner.itertuples():
         blk0_name, blk1_name = row.blk0, row.blk1
@@ -128,7 +154,7 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
         df_partner.loc[df_partner['blk0'] == blk_name, 'alignment_group'] = aln_group
     
     # # df_partner
-    print("df_partner: ", df_partner)
+    # print("df_partner: ", df_partner)
 
     # print(df_partner['blk0'])
     # print(df_partner['blk1'])

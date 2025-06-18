@@ -81,11 +81,17 @@ class PlaceEnv(gym.Env):
 
         # define action space and observation space
         action_space = OrderedDict({"pos": gym.spaces.Discrete(fp_info.x_grid_num * fp_info.y_grid_num)})
+
         if ratio_range is not None:
             action_space["ratio"] = gym.spaces.Box(low=ratio_range[0], high=ratio_range[1], shape=(1,))
+
+        # predict the layer and layerdst
+        # layer      
         if async_place:
             action_space["layer"] = gym.spaces.Discrete(self.fp_info.num_layer)
+            # action_space["layerdst"] = gym.spaces.Discrete(self.fp_info.num_layer)
 
+        # print(action_space)
         self.action_space = gym.spaces.Dict(action_space)
 
         self.observation_space = None
@@ -97,7 +103,9 @@ class PlaceEnv(gym.Env):
     
     def reset(self) -> Tuple[Dict, Dict]:
         # need to reset fp_info, blks and nets
+        # print("reset fp_info starts")
         self.fp_info.reset()
+        # print("reset fp_info ends")
         
         # placing order
         self.reset_place_order()
@@ -114,6 +122,8 @@ class PlaceEnv(gym.Env):
         self.last_metrics = defaultdict(lambda: 0)
 
         self.layer_curr_blk = 0 # the first block's die is 0
+        # layer
+        # self.layerdst_curr_blk = 0 # the dst layer for the first block is 0
 
         # in next step, it is the current block
         next_block_moveable_idx = self.get_next_block_movable_idx(self.layer_curr_blk)
@@ -166,13 +176,13 @@ class PlaceEnv(gym.Env):
 
             # mask
             "wiremask": self.get_wiremask(next_block, self.device).to(device=self.return_device),
-            "position_mask": self.get_position_mask(next_block, self.along_boundary, device=self.device).to(device=self.return_device),
-            "position_mask_loose": self.get_position_mask(next_block, False, self.overlap_ratio, device=self.device).to(device=self.return_device),
+            "position_mask": self.get_position_mask(next_block, 0, self.along_boundary, device=self.device).to(device=self.return_device),
+            "position_mask_loose": self.get_position_mask(next_block, 0, False, self.overlap_ratio, device=self.device).to(device=self.return_device),
             "boundary_mask": self.get_boundary_mask(next_block, device=self.device).to(device=self.return_device),
 
             "wiremask_next": self.get_wiremask(next_next_block, self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
-            "position_mask_next": self.get_position_mask(next_next_block, self.along_boundary, device=self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
-            "grid_area_next": next_next_block.grid_area / self.get_mean_grid_area() if next_next_block is not None else 0,
+            "position_mask_next": self.get_position_mask(next_next_block, 0, self.along_boundary, device=self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
+            "grid_area_next": next_next_block.grid_area / self.get_mean_grid_area() if next_next_block is not None else 0
 
         }
 
@@ -209,104 +219,215 @@ class PlaceEnv(gym.Env):
     def step(self, action: Union[OrderedDict,Batch]) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         """state, reward, terminated, truncated, info"""
         # coordinates
-        pos = action["pos"]
+        pos = action["pos"]   # the position of the action
         # print("pos: ", pos)
-
         x = pos // self.fp_info.y_grid_num
         y = pos % self.fp_info.y_grid_num
+        
+        # print("y_grid_num: ", self.fp_info.y_grid_num)
+        # print("x: ", x, ",y: ", y)
         # print("y_grid_num: ", self.fp_info.y_grid_num)
 
-        # block ratio
+        # block ratio (the ratio for the next blocks)
         if self.ratio_range is not None:
+            # next_block_ratio
             next_block_ratio = action["ratio"] if self.ratio_range is not None else None # next_block_ratio
+            # print("ratio_range min: ", self.ratio_range[0], ", max: ", self.ratio_range[1])
             # print("ratio: ", next_block_ratio)
+            # print("ratio_range high: ", self.ratio_range[1], ", low: ", self.ratio_range[0])
             # next_block_ratio is in range [-1,1], use linear transformation to [low, high]
             next_block_ratio = (next_block_ratio + 1) / 2 * (self.ratio_range[1] - self.ratio_range[0]) + self.ratio_range[0]
+            # clip the ratio into a range
             next_block_ratio = np.clip(next_block_ratio, self.ratio_range[0], self.ratio_range[1])
-        
 
         # get block and pop, which is determined in last step
         # print("layer_curr_blk: ", self.layer_curr_blk)
+        # current block in the layer
+        # print("self.layer_curr_blk: ", self.layer_curr_blk)
+
+        # print("self.layer_curr_blk: ", self.layer_curr_blk, "self.layer_dst_blk: ", self.layerdst_curr_blk, ", 0: ", self.num_block_without_placing_order[0], ", 1: ", self.num_block_without_placing_order[1])
+        # curr_blk_idx
         curr_blk_mov_idx = self.get_next_block_movable_idx(self.layer_curr_blk, pop=True)
-        assert curr_blk_mov_idx is not None, "[Error] Place a block, but the block is None (layer = {}).".format(self.layer_curr_blk)
+        # print("self.layer_curr_blk now: ", self.layer_curr_blk, ", curr_blk_mov_idx: ", curr_blk_mov_idx, ", num 1: ", self.num_block_without_placing_order[0], ", num 2: ", self.num_block_without_placing_order[1])
+
+        # layer
+        # assert curr_blk_mov_idx is not None, "[Error] Place a block, but the block is None (layer_src = {}, layer_dst = {}).".format(self.layer_curr_blk, self.layerdst_curr_blk)
+        assert curr_blk_mov_idx is not None, "[Error] Place a block, but the block is None (layer_src = {})".format(self.layer_curr_blk)
+
+        # curr_blk
         curr_blk = self.fp_info.get_block_by_movable_idx(curr_blk_mov_idx)
+        
+        # place the block on the grid_z if self.fp_info.placed_movable_block_num
+        # layer
+        # if self.fp_info.placed_movable_block_num == 0:
+        #     for net in curr_blk.connected_nets:
+        #         net.add_layer_num_pin(self.layer_curr_blk)
+
+        # set the layer_id for the current block
+        # layer
+        # curr_blk.set_z(self.layerdst_curr_blk)
+        # print("curr_blk z: ", curr_blk.grid_z, "self.layerdst_curr_blk: ", self.layerdst_curr_blk, "self.layer_curr_blk: ", self.layer_curr_blk)
 
         # place block
         self.place_a_block(curr_blk, x, y)
 
-
-        # done
+        # done (if all the blocks are placed terminated)
         terminated = self.fp_info.is_all_placed()
         truncated = False
-
-
         # calculate reward
         # print("curr_blk grid_z: ", curr_blk.grid_z)
         # print("async_place: ", self.async_place)
-        # action_z
+        # action_z (layer for the block selected in the next round)
+        # action_dst_z (layer to place in the next round, default: action_z)
         action_z = action["layer"] if self.async_place else curr_blk.grid_z
-        # update the pin information of the net
-        for net in curr_blk.connected_nets:
-            net.add_layer_num_pin(action_z)
+        # layer
+        # action_dst_z = action["layerdst"] if self.async_place else action_z
 
-        # calculate the reward if the blk is placed at the grid_z
-        reward, info = self.calc_reward(terminated, x, y, action_z, self.fp_info.placed_movable_block_num, None)
+        # if self.fp_info.check_net_init_status():
+        #     print("All initialize to zero! Placing block: ", curr_blk.name)
+        # update the pin information of the net
+        # action_z refers to the current layer
+        # net_id = 0
+        # # # print("Update the net info begins")
+        # add_layer_number_pin
+            # print("net id: ", net_id)
+            # net.show_layer_num_pin()
+            # net_id += 1
 
         # layer_curr_blk, which is the layer to access next block
         if self.async_place:
             self.layer_curr_blk = action["layer"] # in asynchronous place, the layer of the next block is determined by the actor
             #print("num_block_without_placing_order 1 in step: ", self.num_block_without_placing_order)
             # the number of the blocks on the layer
+            # print("number of the residual nlock : ", num_residual_blk)
             num_residual_blk = self.num_block_without_placing_order[self.layer_curr_blk]
+            #print("layer_curr_blk 1: ",  self.layer_curr_blk, "num_residual_blk: ", num_residual_blk)
+
             if num_residual_blk <= 0: # this die is invalid, change to another die
                 layer_with_residual_blk = np.where(self.num_block_without_placing_order > 0)[0]
+                #print("layer_with_residual_blk: ", layer_with_residual_blk)
+                # layer_with_residual_blk
                 if len(layer_with_residual_blk) > 0:
                     self.layer_curr_blk = layer_with_residual_blk[0]
                 else:
                     self.layer_curr_blk = None
         else:
-            self.layer_curr_blk = None # in synchronous place, the layer of the next block takes no effect
+            self.layer_curr_blk = None   # in synchronous place, the layer of the next block takes no effect
+
+
+        # check whether there are replacable blocks on the opposite layer
+        # # layer
+        # if self.async_place:
+        #     # whether there are blocks on the opposite layer
+        #     self.layerdst_curr_blk = action["layerdst"]
+        #     num_dst_residual_blk = self.num_block_without_placing_order[self.layerdst_curr_blk]
+
+        #     if num_dst_residual_blk <= 0:
+        #         layer_with_residual_blk = np.where(self.num_block_without_placing_order > 0)[0]
+        #         if len(layer_with_residual_blk) > 0:
+        #             self.layerdst_curr_blk = layer_with_residual_blk[0]
+        #         else:
+        #             self.layerdst_curr_blk = None
+        # else:
+        #     self.layerdst_curr_blk = None
 
         # next block (in next step, this is the current block)
+        # How to convey the value of grid_z to the next block
+        # next_block
         next_block_moveable_idx = self.get_next_block_movable_idx(self.layer_curr_blk)
         next_block = self.fp_info.get_block_by_movable_idx(next_block_moveable_idx) if next_block_moveable_idx is not None else None
+        # if next_block is not None:
+        #     print("next block z: ", next_block.grid_z, "layer_curr_blk: ", self.layer_curr_blk)
+
+        # To move the block in the dst layer
+        # HPWL cannot reflect the z_direction
+        # layer
+        # if self.async_place:
+        #     # move the block to another layer (dstlayer)
+        #     # how to solve the unbalanced situation of layerblk
+        #     self.layerdst_curr_blk = action["layerdst"]
+        # else:
+        #     self.layerdst_curr_blk = None
+
+        # layer
+        # next_block is placed on the layerdst_curr_blk
+        # if self.async_place and next_block is not None:
+        #     for net in next_block.connected_nets:
+        #         net.add_layer_num_pin(self.layerdst_curr_blk)
+        
+        if next_block is not None:
+            # update block ratio
+            if self.ratio_range is not None:
+                next_block.set_ratio(next_block_ratio, self.fp_info.x_grid_num, self.fp_info.y_grid_num)
+        
+        # layer
+        # if self.async_place and self.layer_curr_blk != self.layerdst_curr_blk:
+        #     self.update_place_order(self.layer_curr_blk, self.layerdst_curr_blk)
+
+        # layer (change the layer)
+
+        # if self.async_place and next_block is not None:
+        #     for net in next_block.connected_nets:
+        #         net.add_layer_num_pin(self.layer_curr_blk)
+        
+        # calculate the reward if the blk is placed at the grid_z
+        # layer
+        # reward, info = self.calc_reward(terminated, x, y, action_z, self.layerdst_curr_blk, self.fp_info.placed_movable_block_num, None)
+        reward, info = self.calc_reward(terminated, x, y, action_z, 0, self.fp_info.placed_movable_block_num, None)
+        # reward, info = self.calc_reward(terminated, x, y, self.layer_curr_blk, self.layerdst_curr_blk, self.fp_info.placed_movable_block_num, None)
+        # print("place_block num: ", self.fp_info.placed_movable_block_num, ", block_name: ", curr_blk.name, ", x: ", curr_blk.grid_x, ", y: ", curr_blk.grid_y, ", w:", curr_blk.w, ", h: ", curr_blk.h, ", via: ", info["via"], ", overlap: ", info["overlap"], ", arearatio: ", info["area_ratio"], ", numratio: ", info["num_ratio"])
+        #print("layer_curr_blk 2: ",  self.layer_curr_blk, "num_residual_blk: ", num_residual_blk)
         
         if next_block is not None:
             self.layer_curr_blk = next_block.grid_z # next next block will be in the same die as the next block
+            # layer
+            # self.layerdst_curr_blk = action["layerdst"]
+
+            # the number of the blocks without placing would decrease 1
             self.update_num_block_without_placing_order(next_block)
             #print("num_block_without_placing_order 2 in step: ", self.num_block_without_placing_order)
 
             # update layer sequence
             if self.input_layer_sequence:
                 self.layer_sequence[self.fp_info.placed_movable_block_num] = next_block.grid_z
+                # self.layer_sequence[self.fp_info.placed_movable_block_num] = action["layerdst"]
                 self.layer_sequence_mask[self.fp_info.placed_movable_block_num] = 0
                 self.layer_sequence_len += 1
-
-            # update block ratio
-            if self.ratio_range is not None:
-                next_block.set_ratio(next_block_ratio, self.fp_info.x_grid_num, self.fp_info.y_grid_num)
         else:
             self.layer_curr_blk = None
 
+        # print("layer_curr_blk 3: ",  self.layer_curr_blk, "num_residual_blk: ", self.num_block_without_placing_order[self.layer_curr_blk])
+
+        # print("self.layer_curr_blk prev: ", self.layer_curr_blk, ", next_block_id: ", next_block_moveable_idx)
+
         # next next block (one more block on this layer)
         next_next_block_layer = self.layer_curr_blk
+
+        # See if there are two blocks on this site (next movable ids)
         next_next_block_moveable_idx = self.get_next_next_block_movable_idx(next_next_block_layer)
+
+        # next_next_block
         next_next_block = self.fp_info.get_block_by_movable_idx(next_next_block_moveable_idx) if next_next_block_moveable_idx is not None else None
 
-        # print("need alignment task: ", self.need_alignment_mask)
+        # self.need_alignment_mask = False
+        # print("self.need_alignment_mask: ", self.need_alignment_mask)
         if next_block is not None:
             if self.need_alignment_mask:
                 alignment_mask, binary_alignment_mask = self.get_alignment_mask(next_block, self.device)
-
         else:
             if self.need_alignment_mask:
                 alignment_mask = self.empty_mask.clone()
                 binary_alignment_mask = self.empty_mask.clone().to(dtype=torch.int32)
 
+        # print("next block layer:", next_block.grid_z, ", action_z: ", action["layer"], ", self.layer_curr_blk: ", self.layer_curr_blk, ", 0: ", self.num_block_without_placing_order[0], ", 1: ", self.num_block_without_placing_order[1])
+        
+        # obs_next calculation
         obs_next = {
             "step": self.fp_info.placed_movable_block_num,
             "num_net": self.fp_info.net_num,
+            # layer
             "layer_idx": next_block.grid_z if next_block is not None else 0,
+            # "layer_idx": self.layerdst_curr_blk if next_block is not None else 0,
             "next_block_valid": 1 if next_block is not None else 0,
             "ready_layers": self.get_ready_layers(),
             "num_blk_without_placing_order": self.num_block_without_placing_order.copy(),
@@ -317,12 +438,15 @@ class PlaceEnv(gym.Env):
 
             # mask
             "wiremask": self.get_wiremask(next_block, self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
-            "position_mask": self.get_position_mask(next_block, self.along_boundary, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
-            "position_mask_loose": self.get_position_mask(next_block, False, self.overlap_ratio, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
+            # "position_mask": self.get_position_mask(next_block,  int(self.layerdst_curr_blk), 1, self.along_boundary, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
+            # "position_mask_loose": self.get_position_mask(next_block,  int(self.layerdst_curr_blk), False, self.overlap_ratio, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
+            "position_mask": self.get_position_mask(next_block,  int(self.layer_curr_blk), 1, self.along_boundary, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
+            "position_mask_loose": self.get_position_mask(next_block,  int(self.layer_curr_blk), False, self.overlap_ratio, device=self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
             "boundary_mask": self.get_boundary_mask(next_block, self.device).to(device=self.return_device) if next_block is not None else self.empty_mask.clone(),
 
             "wiremask_next": self.get_wiremask(next_next_block, self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
-            "position_mask_next": self.get_position_mask(next_next_block, self.along_boundary, device=self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
+            # "position_mask_next": self.get_position_mask(next_next_block,  int(self.layerdst_curr_blk), 2, self.along_boundary, device=self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
+            "position_mask_next": self.get_position_mask(next_next_block,  int(self.layer_curr_blk), 2, self.along_boundary, device=self.device).to(device=self.return_device) if next_next_block is not None else self.empty_mask.clone(),
             "grid_area_next": next_next_block.grid_area / self.get_mean_grid_area() if next_next_block is not None else 0,
         }
 
@@ -346,6 +470,8 @@ class PlaceEnv(gym.Env):
         if self.graph:
             obs_next["graph_data"] = self.get_graph_data()
             obs_next["graph_data"]["idx"] = torch.tensor(next_block.movable_idx) if next_block is not None else torch.tensor(-1)
+
+        # print("source layer: ", self.layer_curr_blk, "dst layer grid_z: ", curr_blk.grid_z, ", z: ", curr_blk.z)
 
         #print("num_block_without_placing_order 3 in step: ", self.num_block_without_placing_order)
         return obs_next, reward, terminated, truncated, info
@@ -497,9 +623,11 @@ class PlaceEnv(gym.Env):
                 for idx in self.place_order:
                     block = self.fp_info.get_block_by_movable_idx(idx)
                     tmp[block.grid_z].append(idx)
+                    #print("block: ", block.name, "block.grid_z: ", block.grid_z)
                 self.place_order = tmp
+            #print("place_order 0: ", len(self.place_order[0]), ", place_order 1: ", len(self.place_order[1]))
         
-            print("place_order after 1: ", self.place_order)
+            # print("place_order after 1: ", self.place_order)
         elif self.place_order_sorting_method == "divide":
             blk_with_aln = [ blk_idx for blk_idx in self.fp_info.get_unplaced_movable_block_movable_indices() if self.fp_info.get_block_by_movable_idx(blk_idx).partner_indices.__len__() > 0 ]
             # sort with alignment area
@@ -532,6 +660,7 @@ class PlaceEnv(gym.Env):
                 tmp.sort(key=lambda x: self.fp_info.get_block_by_movable_idx(x).area, reverse=True)
                 order.extend(tmp)
             self.place_order = order
+        #print("place_order 0: ", len(self.place_order[0]), ", place_order 1: ", len(self.place_order[1]))
         
         # move virtual block to the first
         # Is the virtual box only one?
@@ -542,7 +671,7 @@ class PlaceEnv(gym.Env):
                 self.virtual_blk = blk
                 break
 
-        print("place_order after 2: ", self.place_order)
+        # print("place_order after 2: ", self.place_order)
         if self.virtual_blk is not None:
             if self.async_place:
                 virtual_blk_layer = self.virtual_blk.grid_z
@@ -570,7 +699,9 @@ class PlaceEnv(gym.Env):
             assert len(self.place_order) == len(set(self.place_order))
             assert set(self.place_order) == set(self.fp_info.get_unplaced_movable_block_movable_indices())
         
-        print("place_order after 3: ", self.place_order)
+        #print("place_order 0: ", len(self.place_order[0]), ", place_order 1: ", len(self.place_order[1]))
+        
+        # print("place_order after 3: ", self.place_order)
 
         # copy to init_place_order
         self.init_place_order = deepcopy(self.place_order)
@@ -696,8 +827,13 @@ class PlaceEnv(gym.Env):
         """In each die, the placing order of each block is not determined."""
         if hasattr(self, "init_num_block_without_placing_order"):
             self.num_block_without_placing_order = self.init_num_block_without_placing_order.copy()
+            # reset the z for all the blocks
+            # layer
+            # for b in self.fp_info.block_info:
+            #     b.reset_z()
             return
-        
+
+        # number of the movable blocks without orderings
         self.num_block_without_placing_order = np.zeros(self.fp_info.num_layer, dtype=int)
         for b in self.fp_info.block_info:
             if not b.preplaced:
@@ -718,6 +854,7 @@ class PlaceEnv(gym.Env):
         layer: the layer of the next block, which only takes effect in async_place.
         pop: if True, pop the first block in the list, which means that the place order of this block is determined, even if it is not placed.
         """
+        #print("self.async_place: ", self.async_place)
         if self.async_place:
             # next layer is invalid, means all blocks are placed
             if layer is None:
@@ -726,9 +863,9 @@ class PlaceEnv(gym.Env):
             assert 0 <= layer < self.fp_info.num_layer, "[Error] layer out of range, got {}, but max_layer = {}".format(layer, self.fp_info.num_layer)
 
             # this layer has no block
+            # pop out the first element from place_order
             if len(self.place_order[layer]) == 0:
                 return None
-            
             if pop:
                 return self.place_order[layer].pop(0)
             else:
@@ -743,8 +880,66 @@ class PlaceEnv(gym.Env):
                 return self.place_order.pop(0)
             else:
                 return self.place_order[0]
+    
+    def update_place_order(self, layer_src:int, layer_dst:int):
+        # consider either the layer_src or layer_dst is None
+        if layer_src is None or layer_dst is None:
+            return
+        
+        if len(self.place_order[layer_src]) == 0 or len(self.place_order[layer_dst]) == 0:
+            return
+        
+        # get the self.place_order
+        next_movable_block_id = self.place_order[layer_src][0]
+        next_block = self.fp_info.get_block_by_movable_idx(next_movable_block_id)
 
+        # next_block_area
+        next_block_area = next_block.w * next_block.h
 
+        # visit the block in the layer_dst
+        last_larger_id = 0
+        for move_block_id in self.place_order[layer_dst]:
+            block = self.fp_info.get_block_by_movable_idx(move_block_id)
+            block_area = block.w * block.h
+            # find the block with the area larger than the reference
+            if block_area >= next_block_area:
+                last_larger_id += 1
+        
+        # find the block with the smallest gap
+        if last_larger_id == len(self.place_order[layer_dst]):
+            last_larger_id -= 1
+        elif last_larger_id > 0:
+            block_ref_first_id = self.place_order[layer_dst][last_larger_id - 1]
+            block_ref_second_id = self.place_order[layer_dst][last_larger_id]
+            block_ref_first = self.fp_info.get_block_by_movable_idx(block_ref_first_id)
+            block_ref_second = self.fp_info.get_block_by_movable_idx(block_ref_second_id)
+            block_ref_area_first = block_ref_first.w * block_ref_first.h
+            block_ref_area_second = block_ref_first.w * block_ref_first.h
+            if abs(next_block_area - block_ref_area_first) <= abs(next_block_area - block_ref_area_second):
+                last_larger_id -= 1
+        
+        # find the position to insert
+        block_move_id = self.place_order[layer_dst][last_larger_id]
+        block_move = self.fp_info.get_block_by_movable_idx(block_move_id)
+        block_move_area = block_move.w * block_move.h
+
+        self.place_order[layer_dst].pop(last_larger_id)
+
+        # move
+        last_larger_id = 1
+        for move_block_id in self.place_order[layer_src][1:]:
+            block = self.fp_info.get_block_by_movable_idx(move_block_id)
+            block_area = block.w * block.h
+            # find the block with the area larger than the reference
+            if block_area >= block_move_area:
+                last_larger_id += 1
+        
+        self.place_order[layer_src].insert(last_larger_id, block_move_id)
+        block_move.set_z(layer_src)
+
+        # change the num_block_without_placing_order
+        self.num_block_without_placing_order[layer_src] += 1
+        self.num_block_without_placing_order[layer_dst] -= 1
 
     def get_next_next_block_movable_idx(self, layer:int) -> int:
         """
@@ -760,7 +955,6 @@ class PlaceEnv(gym.Env):
             if len(self.place_order[layer]) <= 1: # must have at least 2 blocks
                 return None
             return self.place_order[layer][1]
-        
         else:
             if len(self.place_order) <= 1: # must have at least 2 blocks
                 return None
@@ -772,7 +966,7 @@ class PlaceEnv(gym.Env):
         assert not block.placed, "Block {} has been placed.".format(block.idx)
 
         # place block
-        block.place(x, y)
+        block.place(x, y, self.fp_info.grid_width, self.fp_info.grid_height)
         self.fp_info.placed_movable_block_num += 1
 
         # update net range
@@ -810,7 +1004,7 @@ class PlaceEnv(gym.Env):
         return self.fp_info.placed_movable_block_num, self.fp_info.movable_block_num
     
 
-    def calc_reward(self, terminated:bool, action_x:int, action_y:int, action_z:int, step:int, tm:torch.Tensor) -> Tuple[float, dict]:
+    def calc_reward(self, terminated:bool, action_x:int, action_y:int, action_z:int, action_z_dst:int, step:int, tm:torch.Tensor) -> Tuple[float, dict]:
         
         # hpwl. Note that weight_hpwl is the weighted hpwl, which is involved in the reward calculation.
         hpwl, weight_hpwl, original_hpwl = self.fp_info.calc_hpwl()
@@ -825,6 +1019,13 @@ class PlaceEnv(gym.Env):
         via_norm_coef = self._via_norm_coef if hasattr(self, "_via_norm_coef") else 1
         via_delta = (self.last_metrics["via"] - via) / via_norm_coef
 
+        # print("via current: ", via, "via last: ", self.last_metrics["via"])
+
+        # area_ratio
+        area_ratio = self.fp_info.calc_area_ratio()
+        # num_ratio
+        num_ratio = self.fp_info.calc_num_ratio()
+
         # alignment
         if self.reward_args.reward_weight_alignment is not None:
             alignment_score = self.fp_info.calc_alignment_score()
@@ -832,9 +1033,13 @@ class PlaceEnv(gym.Env):
         # overlap
         overlap = self.fp_info.get_overlap() # the lower the better
 
-        # number of residual blocks in layer z
+        # print("overlap: ", overlap)
+
+        # number of residual blocks in layer z (is this placing the macro at this layer?)
         num_residual_blk = self.num_block_without_placing_order[action_z]
         
+        # output the weights
+        #print("reward args: ", self.reward_args)
                     
         if self.reward_func == 5: # Intermediate step, use difference of metrics. Final step, use final metrics. Recompute reward.
             if not terminated:
@@ -865,12 +1070,13 @@ class PlaceEnv(gym.Env):
             raise NotImplementedError(f"[Error] reward_func: {self.reward_func} is not supported.")
 
         # calculate layer sum of first half sequence
+        # If the step is smaller than self.fp_info.movable_block_num // 2
         if step <= self.fp_info.movable_block_num // 2:
             layer_sum_first_half_seq = self.last_metrics["layer_sum_first_half_seq"] + action_z
         else:
             layer_sum_first_half_seq = self.last_metrics["layer_sum_first_half_seq"]
 
-        # calculate whether next layer is valid
+        # calculate whether next layer is valid (If there are blocks to be placed)
         next_layer_valid = 1 if num_residual_blk > 0 else 0
         next_layer_valid = self.last_metrics["next_layer_valid"] + next_layer_valid
         
@@ -884,8 +1090,9 @@ class PlaceEnv(gym.Env):
             "via_norm_coef": via_norm_coef,
             "via_delta": via_delta,
             "overlap": overlap,
+            "area_ratio": area_ratio,
+            "num_ratio": num_ratio,
             "alignment": alignment_score if self.reward_args.reward_weight_alignment is not None else -1.0,
-
             "layer_sum_first_half_seq": layer_sum_first_half_seq,
             "next_layer_valid": next_layer_valid,
         }
@@ -930,7 +1137,7 @@ class PlaceEnv(gym.Env):
 
     # @utils.record_time
     @torch.no_grad()
-    def get_position_mask(self, tobe_placed_block:Block, along_boundary:bool=True, overlap_ratio:float=0.0, device:torch.device=torch.device("cpu")) -> torch.Tensor:
+    def get_position_mask(self, tobe_placed_block:Block, layer_next:int=0,  next_or_nextnext: int=1, along_boundary: bool=True, overlap_ratio:float=0.0, device:torch.device=torch.device("cpu")) -> torch.Tensor:
         """
         A position mask which indicates available position for the tobe_placed_block.
         Tensor with shape (x_grid_num, y_grid_num).
@@ -938,27 +1145,38 @@ class PlaceEnv(gym.Env):
         1: not available.
         """
         assert not tobe_placed_block.placed, "[Error] The block {} has been placed.".format(tobe_placed_block.idx)
-        curr_layer = tobe_placed_block.grid_z
+        # current layer
+        # curr_layer = tobe_placed_block.grid_z
+        # curr_layer = layer_next
+        # print("tobe_placed_block.grid_z: ",  tobe_placed_block.grid_z, "layer_next: ", layer_next)
+
         w1 = tobe_placed_block.grid_w
         h1 = tobe_placed_block.grid_h
 
-
+        # What are the overlap w1 and h1?
+        # (overlap_w1, overlap_h1)
         overlap_w1 = round(w1 * overlap_ratio)
         overlap_h1 = round(h1 * overlap_ratio)
+
+        #print("w1: ", w1, "h1: ", h1, "overlap_w1: ", overlap_w1, "overlap_h1: ", overlap_h1, "overlap_ratio: ", overlap_ratio)
+        # print("along_boundary: ", along_boundary)
 
         if along_boundary is False:
             # all position are available
             position_mask = torch.zeros((self.fp_info.x_grid_num, self.fp_info.y_grid_num), device=device)
-            
         else:
-            # only the position along the boundary are available
+            # only the position along the boundary are available (position mask)
+            # print("block name: ", tobe_placed_block.name, "along_boundary: ", along_boundary, "next_or_nextnext", next_or_nextnext)
             position_mask = torch.ones((self.fp_info.x_grid_num, self.fp_info.y_grid_num), device=device)
 
             for i in range(self.fp_info.block_num):
+                # vvirtual blocks?
                 if self.fp_info.block_info[i].virtual:
                     continue
+ 
                 # a placed block, the same layer
-                if self.fp_info.block_info[i].placed and self.fp_info.block_info[i].grid_z == curr_layer:
+                # too strange for the position mask calculation
+                if self.fp_info.block_info[i].placed and self.fp_info.block_info[i].grid_z == layer_next:
                     placed_block = self.fp_info.block_info[i]
 
                     x2 = placed_block.grid_x
@@ -969,6 +1187,8 @@ class PlaceEnv(gym.Env):
                     overlap_w2 = round(w2 * overlap_ratio)
                     overlap_h2 = round(h2 * overlap_ratio)
 
+                    # (Why overlap_w1 is compared with overlap_w2)
+                    # The larggest overlap ratio
                     min_overlap_w = min(overlap_w1, overlap_w2)
                     min_overlap_h = min(overlap_h1, overlap_h2)
 
@@ -1010,6 +1230,7 @@ class PlaceEnv(gym.Env):
                     start_y = max(0, start_y)
                     end_x  += 1
                     end_x = max(0, end_x)
+
                     position_mask[start_x:end_x, start_y:end_y] = 0
 
 
@@ -1041,7 +1262,7 @@ class PlaceEnv(gym.Env):
         for i in range(self.fp_info.block_num):
             if self.fp_info.block_info[i].virtual:
                 continue
-            if self.fp_info.block_info[i].placed and self.fp_info.block_info[i].grid_z == curr_layer:
+            if self.fp_info.block_info[i].placed and self.fp_info.block_info[i].grid_z == layer_next:
                 placed_block = self.fp_info.block_info[i]
 
                 x2 = placed_block.grid_x
@@ -1079,8 +1300,10 @@ class PlaceEnv(gym.Env):
         # set region to 1 due to boundary
         start_x = self.fp_info.x_grid_num - w1
         start_x += 1
+
         start_y = self.fp_info.y_grid_num - h1
         start_y += 1
+
         position_mask[start_x:, :] = 1
         position_mask[:, start_y:] = 1
 

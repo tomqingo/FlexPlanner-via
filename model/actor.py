@@ -103,10 +103,13 @@ class Actor(nn.Module):
 
         if self.set_canvas_to_zero:
             canvas = torch.zeros_like(canvas)
-
+        
+        # normalize the wiremask
         if self.norm_wiremask:
             num_grid = wiremask.shape[-1]
             num_net = torch.from_numpy(obs["num_net"]).to(device=device, dtype=wiremask.dtype) # [B]
+            # wiremask
+            # wiremask_next
             wiremask = wiremask / num_net
             wiremask_next = wiremask_next / num_net
 
@@ -123,13 +126,14 @@ class Actor(nn.Module):
             if self.input_next_block == 1:
                 stacked_mask = torch.cat([stacked_mask, wiremask_next.unsqueeze(1), position_mask_next.unsqueeze(1)], dim=1) # [B, C+2, H, W]
             
+            # input_alignment_mas
             if self.input_alignment_mask:
                 alignment_mask = obs["alignment_mask"].to(device) # [B, H, W]
                 stacked_mask = torch.cat([stacked_mask, alignment_mask.unsqueeze(1)], dim=1) # [B, C+1, H, W]
 
             assert stacked_mask.shape[1] == self.shared_encoder.input_channels, f"stacked_mask.shape[1] = {stacked_mask.shape[1]}, self.shared_encoder.input_channels = {self.shared_encoder.input_channels}"
 
-            # set vision to zero, ablation study
+            # set vision to zero, ablation study, no input features into the model
             if self.set_vision_to_zero:
                 stacked_mask = torch.zeros_like(stacked_mask)
 
@@ -141,7 +145,9 @@ class Actor(nn.Module):
 
             # print("layer_decider: ", self.layer_decider, "layer_decider_forward: ", self.layer_decider_forward)
             if self.layer_decider is not None and self.layer_decider_forward:
+                # layer id
                 layer_idx = torch.from_numpy(obs["layer_idx"]).to(device=device, dtype=torch.long) # [B]
+                # Number of the blocks
                 num_blk_without_placing_order = torch.from_numpy(obs["num_blk_without_placing_order"]).to(device=device, dtype=stacked_mask.dtype) # [B, num_die]
                 
                 # sequence feature 
@@ -158,12 +164,17 @@ class Actor(nn.Module):
                 else:
                     layer_sequence = layer_sequence_mask = layer_sequence_len = None
 
+                # layer
+                # layer_prob, layerdst_prob = self.layer_decider(global_feat, stacked_mask, layer_idx, num_blk_without_placing_order, seq_feat, layer_sequence, layer_sequence_mask, layer_sequence_len) # [B, num_layer]
                 layer_prob = self.layer_decider(global_feat, stacked_mask, layer_idx, num_blk_without_placing_order, seq_feat, layer_sequence, layer_sequence_mask, layer_sequence_len) # [B, num_layer]
-                
+
                 if self.use_ready_layers_mask:
                     ready_layers = torch.from_numpy(obs["ready_layers"]).to(device=device, dtype=layer_prob.dtype) # [B, num_layer]
                     layer_prob = torch.where(ready_layers > 0, layer_prob, -1e8)
                 layer_prob = torch.softmax(layer_prob, dim=-1)
+                # layer
+                # layerdst_prob = torch.softmax(layerdst_prob, dim=-1)
+
                 layer_decider_forward_finished = True
             else:
                 layer_decider_forward_finished = False
@@ -239,7 +250,11 @@ class Actor(nn.Module):
         probs = Batch(pos=probs_pos)
         if self.ratio_decider is not None:
             probs["ratio"] = Batch(mean=ratio_mean, std=ratio_std)
+
+        # layer_decider_forward_finished
         if layer_decider_forward_finished:
             probs["layer"] = layer_prob
+            # layer
+            # probs["layerdst"] = layerdst_prob
             
         return probs, hidden

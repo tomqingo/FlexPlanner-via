@@ -176,13 +176,13 @@ class BasePolicy(ABC, nn.Module):
         if isinstance(self.action_space, gym.spaces.Box) and \
                 isinstance(act, np.ndarray):
             # currently this action mapping only supports np.ndarray action
-            print("bound: ", self.action_bound_method)
+            #print("bound: ", self.action_bound_method)
             if self.action_bound_method == "clip":
                 act = np.clip(act, -1.0, 1.0)
             elif self.action_bound_method == "tanh":
                 act = np.tanh(act)
 
-            print("scale: ", self.action_scaling)
+            #print("scale: ", self.action_scaling)
             if self.action_scaling:
                 assert np.min(act) >= -1.0 and np.max(act) <= 1.0, \
                     "action scaling only accepts raw action range = [-1, 1]"

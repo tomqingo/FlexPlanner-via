@@ -14,6 +14,7 @@ class Block:
         # basic properties
         self.x, self.y, self.w, self.h = x, y, w, h
         self.z = self.grid_z = z
+        self.init_z = self.init_grid_z = z
         self.name = name
         self.preplaced = bool(preplaced)
         self.virtual = bool(virtual)
@@ -50,21 +51,28 @@ class Block:
         self.grid_h = round(max(1, self.h / grid_height)) # at least 1 grid
         self.init_grid_w, self.init_grid_h = self.grid_w, self.grid_h
     
+    def set_xyz(self, x: float, y: float, z: int):
+        self.x, self.y = x, y
+        self.z = self.grid_z = z
+
+    def set_z(self, z: int):
+        self.z = self.grid_z = z
+    
+    def reset_z(self):
+        self.z = self.grid_z = self.init_z
 
     def set_grid_xy(self, grid_width:float, grid_height:float, x_grid_num:int, y_grid_num:int):
         """set grid_x and grid_y based on x, y, grid_width and grid_height."""
         self.grid_x = round(min(x_grid_num - self.grid_w, self.x / grid_width)) # at most x_grid_num - block.grid_w
         self.grid_y = round(min(y_grid_num - self.grid_h, self.y / grid_height)) # at most y_grid_num - block.grid_h
     
-
     def reset(self):
         """reset placed to preplaced."""
         self.placed = self.preplaced
         self.w, self.h = self.init_w, self.init_h
         if hasattr(self, "init_grid_w") and hasattr(self, "init_grid_h"):
             self.grid_w, self.grid_h = self.init_grid_w, self.init_grid_h
-
-    
+ 
     def set_ratio(self, ratio:float, x_grid_num:int, y_grid_num:int):
         """ratio is w/h."""
         # ratio = grid_w/grid_h, reset grid_w and grid_h based on ratio, keep grid_area unchanged
@@ -96,11 +104,13 @@ class Block:
         self.grid_w, self.grid_h = self.grid_h, self.grid_w
     
 
-    def place(self, grid_x:int, grid_y:int):
+    def place(self, grid_x:int, grid_y:int, grid_width:float, grid_height:float):
         """place the block to grid_x, grid_y."""
         self.placed = True
         self.grid_x, self.grid_y = grid_x, grid_y
-
+        # set (x,y) coordinates
+        self.x = self.grid_x * grid_width
+        self.y = self.grid_y * grid_height
 
     @property
     def area(self) -> float:

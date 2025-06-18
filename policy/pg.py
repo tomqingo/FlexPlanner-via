@@ -121,6 +121,7 @@ class PGPolicy(BasePolicy):
             Please refer to :meth:`~tianshou.policy.BasePolicy.forward` for
             more detailed explanation.
         """
+        # self.actor
         logits, hidden = self.actor(batch.obs, state=state, info=batch.info)
         # print("logits: ", logits.keys())
         # print("hidden: ", hidden)

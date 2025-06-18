@@ -63,6 +63,8 @@ class Collector(object):
         self,
         policy: BasePolicy,
         env: Union[gym.Env, BaseVectorEnv],
+        impl: str,
+        design: str,
         buffer: Optional[ReplayBuffer] = None,
         preprocess_fn: Optional[Callable[..., Batch]] = None,
         exploration_noise: bool = False,
@@ -73,12 +75,16 @@ class Collector(object):
             self.env = DummyVectorEnv([lambda: env])  # type: ignore
         else:
             self.env = env  # type: ignore
+        # env_num
         self.env_num = len(self.env)
         self.exploration_noise = exploration_noise
         self._assign_buffer(buffer)
         self.policy = policy
         self.preprocess_fn = preprocess_fn
         self._action_space = self.env.action_space
+        self.impl = impl
+        self.design = design
+
         # avoid creating attribute outside __init__
         self.reset(False)
 
@@ -132,6 +138,7 @@ class Collector(object):
         """
         # use empty Batch for "state" so that self.data supports slicing
         # convert empty Batch to None when passing data to policy
+        # calculate the data
         self.data = Batch(
             obs={},
             act={},
@@ -159,7 +166,11 @@ class Collector(object):
     def reset_env(self, gym_reset_kwargs: Optional[Dict[str, Any]] = None) -> None:
         """Reset all of the environments."""
         gym_reset_kwargs = gym_reset_kwargs if gym_reset_kwargs else {}
+        # print("reset the enironment begins!")
+        # print("environment: ", self.env)
         obs, info = self.env.reset(**gym_reset_kwargs)
+        # print("reset the enironment ends!")
+        # preprocessing the environment
         if self.preprocess_fn:
             processed_data = self.preprocess_fn(
                 obs=obs, info=info, env_id=np.arange(self.env_num)
@@ -241,6 +252,9 @@ class Collector(object):
             * ``rew_std`` standard error of episodic rewards.
             * ``len_std`` standard error of episodic lengths.
         """
+        # print("num_envs: ", self.env_num)
+        # print("n_step: ", n_step, "n_episode: ", n_episode)
+
         assert not self.env.is_async, "Please use AsyncCollector if using async venv."
         if n_step is not None:
             assert n_episode is None, (
@@ -256,8 +270,16 @@ class Collector(object):
             ready_env_ids = np.arange(self.env_num)
         elif n_episode is not None:
             assert n_episode > 0
+            # print("env_num: ", self.env_num, ", n_episode: ", n_episode)
+            # env_num, n_episodes
+            # Why there are elements in self.data
             ready_env_ids = np.arange(min(self.env_num, n_episode))
+            # print("data length: ", len(self.data))
+            # print("self.data: ", len(self.data))
             self.data = self.data[:min(self.env_num, n_episode)]
+            # print("ready_env_ids: ", ready_env_ids.shape[0], "self.data: ", len(self.data))
+            # print("ready_env_ids: ", ready_env_ids)
+            # print("data: ", self.data)
         else:
             raise TypeError(
                 "Please specify at least one (either n_step or n_episode) "
@@ -267,8 +289,11 @@ class Collector(object):
         start_time = time.time()
 
         # [LOG]
+        # step_count, episode_count
         step_count = 0
         episode_count = 0
+
+        # Does it store the information for each episode?
         episode_rews = []
         episode_lens = []
         episode_start_indices = []
@@ -277,6 +302,8 @@ class Collector(object):
         episode_overlaps = []
         episode_vias = []
         episode_alignments = []
+        episode_arearatios = []
+        episode_numratios = []
         episode_layer_sum_first_half_seq = []
         episode_next_layer_valid = []
 
@@ -288,11 +315,13 @@ class Collector(object):
             assert len(self.data) == len(ready_env_ids)
             # restore the state: if the last state is None, it won't store
             last_state = self.data.policy.pop("hidden_state", None)
+            # print(last_state)
 
             # get the next action
             logp_old = Batch()
             # print(self.data)
 
+            # random policy
             if random:
                 try:
                     act_sample = [
@@ -300,6 +329,7 @@ class Collector(object):
                     ]
                 except TypeError:  # envpool's action space is not for per-env
                     act_sample = [self._action_space.sample() for _ in ready_env_ids]
+                # act_sample
                 act_sample = self.policy.map_action_inverse(act_sample)  # type: ignore
                 self.data.update(act=act_sample)
             else:
@@ -312,11 +342,14 @@ class Collector(object):
                     result = self.policy(self.data, last_state)
 
                 # update state / act / policy into self.data
+                # print("result: ", result)
+
                 policy = result.get("policy", Batch())
-                #print("policy: ", policy)
+                # print("policy: ", policy)
+
                 assert isinstance(policy, Batch)
                 state = result.get("state", None)
-                #print("state: ", state)
+                # print("state: ", state)
 
                 if state is not None:
                     policy.hidden_state = state  # save state into buffer
@@ -352,6 +385,7 @@ class Collector(object):
                 action_remap,  # type: ignore
                 ready_env_ids
             )
+
             done = np.logical_or(terminated, truncated)
 
             self.data.update(
@@ -362,6 +396,7 @@ class Collector(object):
                 done=done,
                 info=info
             )
+
             self.data.info.logp_old = logp_old
             if self.preprocess_fn:
                 self.data.update(
@@ -397,7 +432,7 @@ class Collector(object):
                 if episode_count == 0 and self.save_fig and self.__num_epoch % self.__save_gap == 0:
                     for env_idx in env_ind_global:
                         fp_info = self.env.get_env_attr("fp_info", env_idx)[0]
-                        utils.save_final_floorplan(os.path.join(self.__fig_dir, "canvas-epoch={:06d}-env={:03d}.png".format(self.__num_epoch, env_idx)), fp_info)
+                        utils.save_final_floorplan(os.path.join(self.__fig_dir, "canvas-epoch={:06d}-env={:03d}.png".format(self.__num_epoch, env_idx)), fp_info, self.impl, self.design)
                 # [LOG]
                 info_batch = Batch(info)
                 episode_count += len(env_ind_local)
@@ -409,6 +444,8 @@ class Collector(object):
                 episode_overlaps.append(info_batch[env_ind_local]['overlap'])
                 episode_alignments.append(info_batch[env_ind_local]['alignment'])
                 episode_vias.append(info_batch[env_ind_local]['via'])
+                episode_arearatios.append(info_batch[env_ind_local]["area_ratio"])
+                episode_numratios.append(info_batch[env_ind_local]["num_ratio"])
                 episode_layer_sum_first_half_seq.append(info_batch[env_ind_local]['layer_sum_first_half_seq'])
                 episode_next_layer_valid.append(info_batch[env_ind_local]['next_layer_valid'])
                 
@@ -432,6 +469,10 @@ class Collector(object):
                         self.data = self.data[mask]
 
             self.data.obs = self.data.obs_next
+            # print("obs_next: ", self.data.obs_next)
+
+            # print("step count: ", step_count, "n_step: ", n_step)
+            # print("episode count: ", episode_count, "n_episode: ", n_episode)
 
             if (n_step and step_count >= n_step) or \
                     (n_episode and episode_count >= n_episode):                    
@@ -455,6 +496,7 @@ class Collector(object):
                 policy={}
             )
             self.reset_env()
+        
         if episode_count > 0:
             # [LOG]
             rews = np.concatenate(episode_rews)
@@ -464,6 +506,8 @@ class Collector(object):
             vias = np.concatenate(episode_vias)
             overlaps = np.concatenate(episode_overlaps)
             original_hpwls = np.concatenate(episode_original_hpwls)
+            arearatios = np.concatenate(episode_arearatios)
+            numratios = np.concatenate(episode_numratios)
             alignments = np.concatenate(episode_alignments)
             layer_sum_first_half_seq = np.concatenate(episode_layer_sum_first_half_seq)
             next_layer_valid = np.concatenate(episode_next_layer_valid)
@@ -476,6 +520,8 @@ class Collector(object):
             overlap_mean, overlap_std = overlaps.mean(), overlaps.std()
             original_hpwl_mean, original_hpwl_std = original_hpwls.mean(), original_hpwls.std()
             alignment_mean, alignment_std = alignments.mean(), alignments.std()
+            arearatios_mean, arearatios_std = arearatios.mean(), arearatios.std()
+            numratios_mean, numratios_std = numratios.mean(), numratios.std()
             layer_sum_first_half_seq_mean, layer_sum_first_half_seq_std = layer_sum_first_half_seq.mean(), layer_sum_first_half_seq.std()
             next_layer_valid_mean, next_layer_valid_std = next_layer_valid.mean(), next_layer_valid.std()
             
@@ -490,6 +536,8 @@ class Collector(object):
             overlaps = np.array([])
             original_hpwls = np.array([])
             alignments = np.array([])
+            numratios = np.array([])
+            arearatios = np.array([])
             layer_sum_first_half_seq = np.array([])
             next_layer_valid = np.array([])
             
@@ -503,6 +551,8 @@ class Collector(object):
             alignment_mean = alignment_std = 0
             layer_sum_first_half_seq_mean = layer_sum_first_half_seq_std = 0
             next_layer_valid_mean = next_layer_valid_std = 0
+            numratios_mean = numratios_std = 0
+            arearatios_mean = arearatios_std = 0
             
 
 
@@ -522,9 +572,10 @@ class Collector(object):
             "overlap": overlap_mean,
             "original_hpwl": original_hpwl_mean,
             "alignment": alignment_mean,
+            "area_ratio": arearatios_mean,
+            "num_ratio": numratios_mean,
             "layer_sum_first_half_seq": layer_sum_first_half_seq_mean,
             "next_layer_valid": next_layer_valid_mean,
-
 
 
             "rew_std": rew_std,
@@ -534,6 +585,8 @@ class Collector(object):
             "overlap_std": overlap_std,
             "original_hpwl_std": original_hpwl_std,
             "alignment_std": alignment_std,
+            "arearatio_std": arearatios_std,
+            "numratio_std": numratios_std,
             "layer_sum_first_half_seq_std": layer_sum_first_half_seq_std,
             "next_layer_valid_std": next_layer_valid_std,
 
