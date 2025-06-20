@@ -3,11 +3,11 @@ from tianshou.env import DummyVectorEnv
 from tianshou.policy import BasePolicy
 from tianshou.data import VectorReplayBuffer, Collector
 
-def get_statistics(envs:DummyVectorEnv, buffer:VectorReplayBuffer, policy:BasePolicy, impl: str, deisgn: str, n_episode:int, statistics_method:int) -> dict:
+def get_statistics(envs:DummyVectorEnv, buffer:VectorReplayBuffer, policy:BasePolicy, impl:str, design:str, n_episode:int, statistics_method:int) -> dict:
     """return the mean of some metrics"""
     envs.reset()
     buffer.reset()
-    collector = Collector(policy, envs, impl, design, buffer)
+    collector = Collector(policy, envs, buffer)
     print("collector: ", collector)
     collector.reset()
 

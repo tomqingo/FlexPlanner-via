@@ -351,9 +351,9 @@ class PlaceEnv(gym.Env):
 
         # layer
         # next_block is placed on the layerdst_curr_blk
-        # if self.async_place and next_block is not None:
-        #     for net in next_block.connected_nets:
-        #         net.add_layer_num_pin(self.layerdst_curr_blk)
+        if self.async_place and next_block is not None:
+            for net in next_block.connected_nets:
+                net.add_layer_num_pin(self.layer_curr_blk)
         
         if next_block is not None:
             # update block ratio
