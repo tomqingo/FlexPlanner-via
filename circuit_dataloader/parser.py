@@ -29,8 +29,8 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
     Also return  the width and height of the chip.
     """
 
-    # df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
-    df_blk = pd.read_csv(os.path.join(root, f"{circuit}_2.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
+    df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
+    #df_blk = pd.read_csv(os.path.join(root, f"{circuit}_2.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
     blk_wh_dict = {}
     for row in df_blk.itertuples():
         name = row.name
@@ -81,8 +81,8 @@ def parse_blk_xyz(circuit: str, root:str="data_openroad")->Dict[str, List[float]
     Return the (x,y,z) of the blocks given the fp.txt
     """
     blk_xyz_dict = {}
-    # path = os.path.join(root, f"{circuit}.fp.txt")
-    path = os.path.join(root, f"{circuit}_2.fp.txt")
+    path = os.path.join(root, f"{circuit}.fp.txt")
+    # path = os.path.join(root, f"{circuit}_2.fp.txt")
     with open(path, "r") as f:
         for line in f.readlines():
             line_list = line.strip("\n").split(",")
