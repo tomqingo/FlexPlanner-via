@@ -1,4 +1,4 @@
-export PYTHONUNBUFFERED=1design
+export PYTHONUNBUFFERED=1
 export CUDA_VISIBLE_DEVICES=6
 
 
@@ -103,7 +103,8 @@ load_then_collect=1
 # [4] test: [checkpoint]
 # 
 # checkpoint=result/test_ariane133_3/checkpoint/policy-000100.pt
-checkpoint=../FlexPlanner/result/test_bp_3/checkpoint/policy-000350.pt
+# checkpoint=../FlexPlanner/result/test_bp/checkpoint/policy-000300.pt
+checkpoint=../FlexPlanner-via/result/test_bp/checkpoint/policy-000300.pt
 load_optimizer=
 statistics=
 max_epoch_new=
@@ -128,7 +129,8 @@ fi
 
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}-E=${shared_encoder_cls}-D=${deconv_class}
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}
-result_dir=../FlexPlanner/result/test_ariane133
+# result_dir=../FlexPlanner/result/test_ariane133
+result_dir=../FlexPlanner-via/result/test_ariane133
 # result_dir=result/test_bp_4
 
 
@@ -161,7 +163,8 @@ if [ -n "${checkpoint}" ]; then
     cp ${checkpoint} ${result_dir}/finetune_base_checkpoint.pt
 fi
 
-nohup python -u ../FlexPlanner/main.py \
+# nohup python -u ../FlexPlanner/main.py \
+nohup python -u ../FlexPlanner-via/main.py \
     --circuit ${circuit} \
     --impl ${impl} \
     --design ${design} \

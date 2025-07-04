@@ -14,9 +14,9 @@ add_virtual_block=1
 
 
 # circuit=nangate45_ariane133
-circuit=nangate45_ariane133
+circuit=nangate45_bp
 impl=nangate45
-design=ariane133
+design=bp
 
 max_epoch=2000
 area_util=1.6
@@ -124,7 +124,7 @@ fi
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}-E=${shared_encoder_cls}-D=${deconv_class}
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}
 # result_dir=result/test_ariane133_3
-result_dir=result/test_ariane133
+result_dir=result/test_bp
 
 
 # if have defined the variable `checkpoint`, add more comment to the `result_dir`

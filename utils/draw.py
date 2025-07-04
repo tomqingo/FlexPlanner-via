@@ -158,8 +158,8 @@ def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, enable_
     df.to_csv(path.replace(".png", ".csv"), index=False)
     move_dir = "objects/" + impl + "/" + design + "/base/rtlmp"
     move_path = os.path.join(move_dir, "flexplan.csv")
-    if not os.path.exists(move_path):
-        cmd = 'mkdir -p {}'.format(move_path)
+    if not os.path.exists(move_dir):
+        cmd = 'mkdir -p {}'.format(move_dir)
         run(cmd)
     cmd = 'cp {} {}'.format(path.replace(".png", ".csv"), move_path)
     run(cmd)

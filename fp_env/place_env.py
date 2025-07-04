@@ -221,6 +221,8 @@ class PlaceEnv(gym.Env):
         # coordinates
         pos = action["pos"]   # the position of the action
         # print("pos: ", pos)
+
+        # (x,y) position
         x = pos // self.fp_info.y_grid_num
         y = pos % self.fp_info.y_grid_num
         
@@ -238,6 +240,7 @@ class PlaceEnv(gym.Env):
             # next_block_ratio is in range [-1,1], use linear transformation to [low, high]
             next_block_ratio = (next_block_ratio + 1) / 2 * (self.ratio_range[1] - self.ratio_range[0]) + self.ratio_range[0]
             # clip the ratio into a range
+            # Should consider if the block is hard Macro
             next_block_ratio = np.clip(next_block_ratio, self.ratio_range[0], self.ratio_range[1])
 
         # get block and pop, which is determined in last step
@@ -997,8 +1000,6 @@ class PlaceEnv(gym.Env):
             "z": block.grid_z,
         })
 
-
-
     @property
     def curr_process(self) -> Tuple[int,int]:
         return self.fp_info.placed_movable_block_num, self.fp_info.movable_block_num
@@ -1023,6 +1024,7 @@ class PlaceEnv(gym.Env):
 
         # area_ratio
         area_ratio = self.fp_info.calc_area_ratio()
+
         # num_ratio
         num_ratio = self.fp_info.calc_num_ratio()
 
