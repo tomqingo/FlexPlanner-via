@@ -11,17 +11,25 @@ from collections import defaultdict
 
 
 def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_grid_y:int, num_alignment:int, 
-                           alignment_rate:float, alignment_sort:str, num_preplaced_module:int, add_virtual_block:bool, num_layer:int, read_fp: bool, set_z_only: bool) -> Tuple[fp_env.FPInfo, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+                           alignment_rate:float, alignment_sort:str, num_preplaced_module:int, add_virtual_block:bool, num_layer:int, read_fp: bool, set_z_only: bool, add_halo: bool, halo_width: float, halo_height: float) -> Tuple[fp_env.FPInfo, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     
     alignment_rate = 1.0 if alignment_rate is None else alignment_rate
+    
     # read block and terminal (w,h,virtual)
-    blk_wh_dict, tml_xy_dict, outline_width, outline_height = parse_blk_tml(circuit, area_util)
+    # (add_halo, halo_width, halo_height)
+    if not add_halo:
+        halo_width = 0.0    
+        halo_height = 0.0
+    
+    # parse_blk_tml (blk_wh_dict, tml_xy_dict)
+    blk_wh_dict, tml_xy_dict, outline_width, outline_height = parse_blk_tml(circuit, area_util, add_halo, halo_width, halo_height)
+    
     tml_xy_dict = map_tml(tml_xy_dict, outline_width, outline_height)
 
     # assign layer (w,h,virtual,z)
     first_blk_wh = next(iter(blk_wh_dict.values()))
 
-    # initialize the levels
+    # initialize the levels (first_blk_wh)
     if "z" not in first_blk_wh.keys():
         # balance the area between the two layers
         print("[INFO] Constructing layer information")
@@ -29,16 +37,22 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     # construct preplaced modules (w,h,virtual,z,preplaced,x,y)
     first_blk_wh = next(iter(blk_wh_dict.values()))
+
     if "preplaced" not in first_blk_wh.keys():
         print("[INFO] Constructing preplaced modules")
         blk_wh_dict = construct_preplaced_modules(num_preplaced_module, blk_wh_dict, outline_height)
 
     # add virtual block
+    # not add the halo_width and halo_height
+    # virtual_block
     if add_virtual_block:
         print("[INFO] Adding virtual block")
         blk_wh_dict["virtual_block"] = {
             "w": 1,
             "h": 1,
+            "realw": 1,
+            "realh": 1,
+            "type": "virtual",
             "virtual": True,
             "z": 0,
             "preplaced": False,
@@ -54,13 +68,16 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
     # all blocks, preplaced_blocks + movable_blocks
     preplaced_blocks = []
     movable_blocks = []
+    
+    # The number of the blocks on two layers
     layer_dict = {0: 0, 1: 0}
 
     for blk_name, blk_info in blk_wh_dict.items():
         if blk_info['preplaced']: # PPM
-            preplaced_blocks.append(fp_env.Block(blk_info['x'], blk_info['y'], blk_info['z'], blk_info['w'], blk_info['h'], blk_name, True, blk_info['virtual']))
+            preplaced_blocks.append(fp_env.Block(blk_info['x'], blk_info['y'], blk_info['z'], blk_info['w'], blk_info['h'], blk_info["realw"], blk_info["realh"], blk_name, blk_info["type"], True, blk_info['virtual']))
         else: # movable or virtual
-            movable_blocks.append(fp_env.Block(0, 0, blk_info['z'], blk_info['w'], blk_info['h'], blk_name, False, blk_info['virtual']))
+            movable_blocks.append(fp_env.Block(0, 0, blk_info['z'], blk_info['w'], blk_info['h'], blk_info["realw"], blk_info["realh"], blk_name, blk_info["type"], False, blk_info['virtual']))
+            # blk_xyz_dict
             if blk_name in list(blk_xyz_dict.keys()):
                 xyz_list = blk_xyz_dict[blk_name]
                 x_, y_, z_ = xyz_list[0], xyz_list[1], xyz_list[2]
@@ -72,19 +89,21 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
                     movable_blocks[-1].set_xyz(x_, y_, int(z_))
                     movable_blocks[-1].placed = True
     
+    # The number of blocks on each layer
     print("layer 0: ", layer_dict[0], "layer 1: ", layer_dict[1])
     
+    # （preplaced_blocks，movable_blocks）
     block_info = preplaced_blocks + movable_blocks
 
-    
     # blocks
     # print("preplaced_blocks: ", len(preplaced_blocks))
     # print("movable_blocks", len(movable_blocks))
     # print("blocks: ", len(block_info))
 
-    # terminal
+    # terminal_info
     terminal_info = []
     for terminal_name in tml_xy_dict.keys():
+        # terminal_name
         terminal_xy = tml_xy_dict[terminal_name]
         # All the z-position are 0
         terminal_info.append(fp_env.Terminal(terminal_xy['x'], terminal_xy['y'], 0, terminal_name))
@@ -92,13 +111,16 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
 
     # discretize block and terminal
     block_info, terminal_info, grid_width, grid_height = fp_env.discretize(block_info, terminal_info, num_grid_x, num_grid_y, outline_width, outline_height)
+    
     print("block info: ", len(block_info))
     print("tml_info: ", len(terminal_info))
+
     # print(grid_width, grid_height)
 
     # read nets and construct net_info, nets is List[List[str]]
     # also construct adjacency matrix
     nets_str = parse_net(circuit)
+    # name to objects
     name2obj = {obj.name: obj for obj in block_info + terminal_info}
 
     net_info = []
@@ -109,6 +131,7 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
         net = fp_env.Net(connector_list, net_weight, read_fp and (not set_z_only))
         # initialize the number of the pins in each layer for different nets
         net.init_layer_num_pin(num_layer)
+        # read_from_floorplan
         if read_fp and not set_z_only:
             net.fill_layer_num_pin_withfp()
         net_info.append(net)
@@ -126,6 +149,7 @@ def construct_fp_info_func(circuit:str, area_util:float, num_grid_x:int, num_gri
                 adjacency_matrix[name2obj[net_connectors_str[j]].idx, name2obj[net_connectors_str[i]].idx] = fp_info.net_info[net_idx].get_net_weight()
             # add connector to net
             fp_info.net_info[net_idx].add_connector(name2obj[net_connectors_str[i]])
+
     #print(adjacency_matrix)
     fp_info.set_adjacency_matrix(adjacency_matrix)
 

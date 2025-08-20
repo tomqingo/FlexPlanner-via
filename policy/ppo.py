@@ -153,6 +153,7 @@ class PPOPolicy(A2CPolicy):
         if self._recompute_adv:
             # buffer input `buffer` and `indices` to be used in `learn()`.
             self._buffer, self._indices = buffer, indices
+        # batch
         batch = self._compute_returns(batch, buffer, indices)
         batch.act = to_torch_as(batch.act, batch.v_s)
         with torch.no_grad():

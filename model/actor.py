@@ -113,6 +113,7 @@ class Actor(nn.Module):
             wiremask = wiremask / num_net
             wiremask_next = wiremask_next / num_net
 
+        # wiremask_bbo
         if not self.wiremask_bbo:
             if self.input_partner_die:
                 num_die = canvas.shape[1]

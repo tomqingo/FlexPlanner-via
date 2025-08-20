@@ -10,10 +10,13 @@ def construct_preplaced_modules(num_preplaced_module:int, blk_wh_dict:dict, outl
     blk_each_layer = defaultdict(list)
     for block_name in blk_wh_dict.keys():
         block_wh = blk_wh_dict[block_name]
+        # compute the area on each die respectively
         blk_each_layer[block_wh['z']].append({
             "name": block_name,
             "area": block_wh['w'] * block_wh['h'],
         })
+    
+    # block on each layer
     for i in range(len(blk_each_layer)):
         blk_each_layer[i] = sorted(blk_each_layer[i], key=lambda x: x["area"])
         x = 0

@@ -13,10 +13,11 @@ num_layer=2
 add_virtual_block=1
 
 
-# circuit=nangate45_ariane133
-circuit=nangate45_bp
+circuit=nangate45_ariane133
+# circuit=nangate45_bp
 impl=nangate45
-design=bp
+# design=bp
+design=ariane133
 
 max_epoch=2000
 area_util=1.6
@@ -94,11 +95,15 @@ norm_wiremask=0
 statistics_method=0
 load_then_collect=1
 
+add_halo=1
+halo_width=5.0
+halo_height=5.0
+
 # [1] resume training: [checkpoint], [load_optimizer], and [statistics]
 # [2] continue training for more epochs: [checkpoint], [load_optimizer], [statistics] and [max_epoch_new]
 # [3] transfer learning: [checkpoint]
 # [4] test: [checkpoint]
-checkpoint=result/test_bp/checkpoint/policy-000200.pt
+checkpoint=
 load_optimizer=
 statistics=
 max_epoch_new=
@@ -123,8 +128,8 @@ fi
 
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}-E=${shared_encoder_cls}-D=${deconv_class}
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}
-# result_dir=result/test_ariane133_3
-result_dir=result/test_bp_continue
+result_dir=result/test_ariane133_2
+# result_dir=result/test_bp
 
 
 # if have defined the variable `checkpoint`, add more comment to the `result_dir`
@@ -168,6 +173,9 @@ nohup python -u main.py \
     --ratio_range ${ratio_min} ${ratio_max} \
     --ent_coef ${ent_coef} \
     --area_util ${area_util} \
+    --add_halo ${add_halo} \
+    --halo_width ${halo_width} \
+    --halo_height ${halo_height} \
     --overlap_ratio ${overlap_ratio} \
     --enable_ratio ${enable_ratio} \
     --ratio_coef ${ratio_coef} \

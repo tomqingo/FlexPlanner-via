@@ -10,7 +10,7 @@ import pandas as pd
 
 
 
-def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], float, float]:
+def parse_blk_tml(circuit:str, area_util:float, add_halo:bool, halo_width:float, halo_height:float, root:str="../FlexPlanner-via/data_openroad") -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], float, float]:
     """
     blk_wh_dict: {
         "[block_name]": {
@@ -28,36 +28,75 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
 
     Also return  the width and height of the chip.
     """
-
-    df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
+    # (name, type, w, h, x, y, z)
+    df_blk = pd.read_csv(os.path.join(root, f"{circuit}.blk.csv"), dtype={'name':str, 'type':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
     #df_blk = pd.read_csv(os.path.join(root, f"{circuit}_2.blk.csv"), dtype={'name':str, 'w':float, 'h':float, 'x':float, 'y':float, 'z':int, 'preplaced':int})
     blk_wh_dict = {}
+
+    # not adding the halo
+    if not add_halo:
+        halo_width = 0.0
+        halo_height = 0.0
+
+    # blk_area
+    blk_area = 0.0
     for row in df_blk.itertuples():
         name = row.name
+        type_ = row.type
         w = row.w
         h = row.h
-        blk_wh_dict[name] = {
-            'w': w,
-            'h': h,
-            'virtual': False,
-        }
+        # add the halo
+        # blk_wh_dict information
+        # realw : w, realh: h
+        # (name, info)
+        if type_ == "Macro":
+            blk_wh_dict[name] = {
+                'w': w + 2 * halo_width,
+                'h': h + 2 * halo_height,
+                'realw': w,
+                'realh' : h,
+                'type' : type_,
+                'virtual': False,
+            }
+            blk_area += (w + 2 * halo_width)*(h + 2 * halo_height)
+        else:
+            blk_wh_dict[name] = {
+                 'w': w,
+                 'h': h,
+                 'realw': w,
+                 'realh' : h,
+                 'type' : type_,
+                 'virtual': False,
+            }
+            blk_area += w*h            
 
         # optional fields
-        # "x", "y", "z"
+        # "x", "y", "z", "preplaced"
         optional_fields = ['x', 'y', 'z', 'preplaced']
+        # optional_fields/
         for field in optional_fields:
             if hasattr(row, field):
                 blk_wh_dict[name][field] = getattr(row, field)
 
     blk_wh_dict = OrderedDict(sorted(blk_wh_dict.items()))
-    blk_area = (df_blk['w'] * df_blk['h']).sum()
+
+    # blk_area = ((df_blk['w'] + 2*halo_width) * (df_blk['h'] + 2*halo_height)).sum()
+    # print("df_blk: ", df_blk['w'])
+
+    #blk_area = (blk_wh_dict['w'] * blk_wh_dict['h']).sum()
+
+    # area utilization
     die_area = blk_area / area_util
+
     # large chip_w, chip_h area
     chip_w = chip_h = die_area ** 0.5
+    
+    # blk_area
     print("die area: ", die_area)
     print("blk_area: ", blk_area)
     print("chip_w: ", chip_w, "chip_h: ", chip_h)
 
+    # df_tml
     df_tml = pd.read_csv(os.path.join(root, f"{circuit}.tml.csv"), dtype={'name':str, 'x':float, 'y':float})
     
     tml_xy_dict = {}
@@ -76,7 +115,7 @@ def parse_blk_tml(circuit:str, area_util:float, root:str="data_openroad") -> Tup
     
     return blk_wh_dict, tml_xy_dict, float(chip_w), float(chip_h)
 
-def parse_blk_xyz(circuit: str, root:str="data_openroad")->Dict[str, List[float]]:
+def parse_blk_xyz(circuit: str, root:str="../FlexPlanner-via/data_openroad")->Dict[str, List[float]]:
     """
     Return the (x,y,z) of the blocks given the fp.txt
     """
@@ -87,12 +126,13 @@ def parse_blk_xyz(circuit: str, root:str="data_openroad")->Dict[str, List[float]
         for line in f.readlines():
             line_list = line.strip("\n").split(",")
             blk_name = line_list[0]
+            # (blk_x, blk_y, blk_z)
             blk_x, blk_y, blk_z = float(line_list[1]), float(line_list[2]), float(line_list[-1])
             blk_xyz_dict[blk_name] = [blk_x, blk_y, blk_z]
     return blk_xyz_dict
 
 
-def parse_net(circuit:str, root:str="data_openroad") -> List[List[str]]:
+def parse_net(circuit:str, root:str="../FlexPlanner-via/data_openroad") -> List[List[str]]:
     """
     Return netlist, each net is a list consisting of str, the name of pin.
     """
@@ -103,7 +143,6 @@ def parse_net(circuit:str, root:str="data_openroad") -> List[List[str]]:
         net = eval(row.net)
         nets.append(net)
     return nets
-
 
 
 def map_tml(tml_xy_dict:OrderedDict, chip_w:float, chip_h:float) -> Dict[str, Dict[str, float]]:

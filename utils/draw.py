@@ -47,7 +47,8 @@ def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, enable_
 
             # label = label if label_dict[label][block.grid_z] == 1 else None
             # axes[block.grid_z].add_patch(plt.Rectangle((block.grid_x, block.grid_y), block.grid_w, block.grid_h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3, label=label))
-            axes[block.grid_z].add_patch(plt.Rectangle((block.x, block.y), block.w, block.h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3))
+            if block.type == "Macro":
+                axes[block.grid_z].add_patch(plt.Rectangle((block.x+5.0, block.y+5.0), block.real_w, block.real_h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3))
             # text = str(block.idx)
             # text = block.name
             # if block.name in name2alignment_group:

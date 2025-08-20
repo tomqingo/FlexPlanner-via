@@ -372,6 +372,7 @@ class BaseTrainer(ABC):
         # perform n step_per_epoch
         # print("step_per_epoch: ", self.step_per_epoch)
 
+        # n_epoch
         with progress(
             total=self.step_per_epoch, desc=f"Epoch #{self.epoch}", **tqdm_config
         ) as t:

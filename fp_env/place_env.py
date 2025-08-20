@@ -361,8 +361,9 @@ class PlaceEnv(gym.Env):
         if next_block is not None:
             # update block ratio
             if self.ratio_range is not None:
-                next_block.set_ratio(next_block_ratio, self.fp_info.x_grid_num, self.fp_info.y_grid_num)
-        
+                # adjust the next_block_ratio according to the type of the next_block
+                if not next_block.type == "Macro":
+                    next_block.set_ratio(next_block_ratio, self.fp_info.x_grid_num, self.fp_info.y_grid_num)
         # layer
         # if self.async_place and self.layer_curr_blk != self.layerdst_curr_blk:
         #     self.update_place_order(self.layer_curr_blk, self.layerdst_curr_blk)
@@ -407,6 +408,7 @@ class PlaceEnv(gym.Env):
         next_next_block_layer = self.layer_curr_blk
 
         # See if there are two blocks on this site (next movable ids)
+        # get_next_next_block_movable_idx
         next_next_block_moveable_idx = self.get_next_next_block_movable_idx(next_next_block_layer)
 
         # next_next_block

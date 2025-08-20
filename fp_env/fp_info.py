@@ -23,9 +23,11 @@ def discretize(block_info:List[Block], terminal_info:List[Terminal], x_grid_num:
         for block in block_info:
             block.set_grid_wh(grid_width, grid_height)
             block.set_grid_xy(grid_width, grid_height, x_grid_num, y_grid_num)
+            # block.preplaced
             if block.preplaced:
                 while True:
                     canvas[block.grid_z][block.grid_x:block.grid_x+block.grid_w, block.grid_y:block.grid_y+block.grid_h] += 1
+                    # without overlap?
                     if (canvas[block.grid_z] > 1).sum() > 0:
                         canvas[block.grid_z][block.grid_x:block.grid_x+block.grid_w, block.grid_y:block.grid_y+block.grid_h] -= 1
                         block.grid_x += 1
@@ -36,7 +38,6 @@ def discretize(block_info:List[Block], terminal_info:List[Terminal], x_grid_num:
         for terminal in terminal_info:
             terminal.set_grid_xy(grid_width, grid_height, x_grid_num, y_grid_num)
         
-
         return block_info, terminal_info, grid_width, grid_height
 
 
@@ -77,8 +78,8 @@ class FPInfo:
         # set index for block
         self.preplaced_block_indices = [] # full index for preplaced block
         self.movable_block_indices = [] # full index for movable block
-        preplaced_block_idx = 0
-        movable_block_idx = 0
+        preplaced_block_idx = 0  # preplaced_block_idx
+        movable_block_idx = 0  # movable_block_idx
 
         for full_idx, block in enumerate(self.block_info):
             if block.preplaced:

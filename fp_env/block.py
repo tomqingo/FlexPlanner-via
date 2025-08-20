@@ -3,8 +3,8 @@ import numpy as np
 from .terminal import Terminal
 
 class Block:
-    def __init__(self, x:float, y:float, z:int, w:float, h:float, 
-                 name:str, preplaced:bool, virtual:bool,
+    def __init__(self, x:float, y:float, z:int, w:float, h:float,
+                 realw:float, realh:float, name:str, type_:str, preplaced:bool, virtual:bool,
                  ):
         """
         x: bottom-left x
@@ -15,6 +15,11 @@ class Block:
         self.x, self.y, self.w, self.h = x, y, w, h
         self.z = self.grid_z = z
         self.init_z = self.init_grid_z = z
+
+        # block type
+        self.type = type_
+
+        # block information
         self.name = name
         self.preplaced = bool(preplaced)
         self.virtual = bool(virtual)
@@ -27,7 +32,8 @@ class Block:
 
         # init properties
         self.init_w, self.init_h = w, h
-
+        # (real_w, real_y) for the fixed macro block
+        self.real_w, self.real_h = realw, realh
 
         # connected_nets
         self.connected_nets = []

@@ -34,6 +34,11 @@ def get_args():
     parser.add_argument('--add_virtual_block', type=int, default=0, help='the first block to place')
     parser.add_argument('--num_layer', type=int, default=2, help='number of layers/dies')
 
+    # add the halo (halo_width, halo_height)
+    parser.add_argument('--add_halo', type=int, default=0, help='add the halo around the cell')
+    parser.add_argument('--halo_width', type=float, default=0.0, help='halo width around the cell')
+    parser.add_argument('--halo_height', type=float, default=0.0, help='halo height around the cell')
+
     # checkpoint
     parser.add_argument('--checkpoint', type=str, default=None, help='checkpoint')
     parser.add_argument('--load_then_collect', type=int, default=1, help='load then collect')
@@ -168,5 +173,7 @@ def get_args():
     args.load_optimizer = True if args.checkpoint is not None and args.load_optimizer > 0 and args.train else False
     args.norm_wiremask = True if args.norm_wiremask > 0 else False
     args.input_partner_die = True if args.input_partner_die > 0 else False
+
+    args.add_halo = True if args.add_halo > 0 else False
 
     return args

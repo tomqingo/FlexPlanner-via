@@ -22,7 +22,6 @@ from trainer import OnpolicyTrainer
 # from tianshou.data import Collector
 from collector import Collector, get_statistics
 
-
 import model
 import numpy as np
 from utils import TensorboardWriter
@@ -63,10 +62,11 @@ writer = TensorboardWriter(log_dir=result_dir)
 
 # fp_info
 fp_info, df_partner = circuit_dataloader.construct_fp_info_func(args.circuit, args.area_util, num_grid_x, num_grid_y, 
-                                                    args.num_alignment, args.alignment_rate, args.alignment_sort, args.num_preplaced_module, args.add_virtual_block, args.num_layer, True, True)
+                                                    args.num_alignment, args.alignment_rate, args.alignment_sort, args.num_preplaced_module, args.add_virtual_block, args.num_layer, True, True, args.add_halo, args.halo_width, args.halo_height)
 
 #pdb.set_trace()
 
+# episode length
 episode_len = fp_info.movable_block_num
 
 df_partner.to_csv(os.path.join(result_dir, "partner.csv"), index=False)
@@ -96,6 +96,7 @@ shared_encoder_cls = getattr(model, args.shared_encoder_cls)
 # print("num_grid_x: ", num_grid_x)
 # print("episode_len: ", episode_len)
 
+# SharedEncoder
 shared_encoder = model.SharedEncoder(shared_encoder_input_channel, args.graph, args.shared_encoder_final_shape, num_grid_x, shared_encoder_cls, episode_len)
 
 # print(shared_encoder)
@@ -129,6 +130,7 @@ if args.async_place:
         layer_decider_hidden_dim = 4
 
     LayerDeciderClass = model.LayerDecider
+    # layer_decider
     layer_decider = LayerDeciderClass(fp_info.num_layer, layer_decider_input_dim, layer_decider_hidden_dim, 
                                        args.async_place_share_with_critics, args.die_embedding, args.async_place_input_sequence, args.input_layer_sequence)
 else:
@@ -148,6 +150,7 @@ deconv_model = deconv_class(num_grid_x, shared_encoder.final_shape)
 
 # print(deconv_model)
 
+# model.Actor
 actor = model.Actor(
     num_grid_x * num_grid_y, shared_encoder, local_encoder, args.actor_update_shared_encoder, deconv_model=deconv_model, layer_decider=layer_decider,
     wiremask_bbo=wiremask_bbo, ratio_decider=ratio_decider, norm_wiremask=args.norm_wiremask, 
@@ -157,6 +160,7 @@ actor = model.Actor(
 
 # print(actor)
 
+# model.Crtic
 critic = model.Critic(
     episode_len, shared_encoder, args.norm_wiremask, args.input_partner_die, args.input_alignment_mask, 
     args.input_next_block, fp_info.num_layer, args.input_sequence_critic, args.input_die_critic, args.reduced_dim_critic, args.set_vision_to_zero, args.set_canvas_to_zero, 
@@ -185,6 +189,7 @@ print("args.pos_coef", args.pos_coef, "args.ratio_coef", args.ratio_coef, " args
 clip_loss_coef = ClipLossCoef(args.pos_coef, args.ratio_coef, args.async_place_coef) # args for clip loss
 entropy_loss_coef = EntropyLossCoef(async_place_coef=args.async_place_entropy_coef) # args for entropy loss
 
+# PPOPolicy
 ppo_policy = PPOPolicy(
     actor, critic, optimizer, dist_cls, max_grad_norm=args.max_grad_norm, 
     ent_coef=args.ent_coef, clip_loss_coef=clip_loss_coef, entropy_loss_coef=entropy_loss_coef, 

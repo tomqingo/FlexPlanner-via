@@ -79,6 +79,7 @@ class Collector(object):
         self.env_num = len(self.env)
         self.exploration_noise = exploration_noise
         self._assign_buffer(buffer)
+        # self.policy
         self.policy = policy
         self.preprocess_fn = preprocess_fn
         self._action_space = self.env.action_space
@@ -712,6 +713,7 @@ class AsyncCollector(Collector):
                 if no_grad:
                     with torch.no_grad():  # faster than retain_grad version
                         # self.data.obs will be used by agent to get result
+                        # (data, last_state)
                         result = self.policy(self.data, last_state)
                 else:
                     result = self.policy(self.data, last_state)
