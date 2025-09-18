@@ -35,6 +35,7 @@ import pdb
 args = get_args()
 
 utils.setup_seed(args.seed)
+# (num_grid_x, num_grid_y)
 num_grid_x = args.num_grid_x
 num_grid_y = args.num_grid_y
 result_dir = args.result_dir
@@ -113,6 +114,7 @@ if args.enable_ratio:
     ratio_decider = model.RatioDecider(ratio_decider_input_dim, args.ratio_range, args.ratio_area_in_dim, 
                                        ratio_decider_hidden_dim, args.ratio_share_with_critics, args.input_next_block)
 else:
+    # ratio_decider
     ratio_decider = None
 
 # print(ratio_decider)
@@ -300,8 +302,8 @@ buffer.reset()
 
 
 # collector
-train_collector = Collector(ppo_policy, train_envs, args.impl, args.design, buffer)
-test_collector = Collector(ppo_policy, test_envs, args.impl, args.design)
+train_collector = Collector(ppo_policy, train_envs, args.impl, args.design, args.add_halo, args.halo_width, args.halo_height, buffer)
+test_collector = Collector(ppo_policy, test_envs, args.impl, args.design, args.add_halo, args.halo_width, args.halo_height)
 
 train_collector.reset()
 test_collector.reset()
@@ -417,7 +419,11 @@ utils.save_json(time, os.path.join(result_dir, "time.json"))
 if args.save_fig > 0 or True:
     for env_idx in range(num_env_test):
         fp_info = test_envs.get_env_attr("fp_info", env_idx)[0]
-        utils.save_final_floorplan(os.path.join(fig_dir, "final-canvas-env={:03d}.png".format(env_idx)), fp_info, args.impl, args.design)
+        # save_final_floorplan
+        if args.add_halo:
+            utils.save_final_floorplan(os.path.join(fig_dir, "final-canvas-env={:03d}.png".format(env_idx)), fp_info, args.impl, args.design, args.halo_height, args.halo_width)
+        else:
+            utils.save_final_floorplan(os.path.join(fig_dir, "final-canvas-env={:03d}.png".format(env_idx)), fp_info, args.impl, args.design, 0.0, 0.0)
 
 
 lock_path = os.path.join(os.path.dirname(__file__), "lock.tmp")

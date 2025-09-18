@@ -1,5 +1,5 @@
 export PYTHONUNBUFFERED=1
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=6
 
 
 device=cuda
@@ -19,8 +19,9 @@ impl=nangate45
 # design=bp
 design=ariane133
 
-max_epoch=2000
-area_util=1.6
+max_epoch=500
+#area_util=1.6
+area_util=1.0
 
 num_grid=128
 train=1
@@ -96,8 +97,9 @@ statistics_method=0
 load_then_collect=1
 
 add_halo=1
-halo_width=40.0
-halo_height=40.0
+halo_width=10.0
+halo_height=10.0
+
 
 # [1] resume training: [checkpoint], [load_optimizer], and [statistics]
 # [2] continue training for more epochs: [checkpoint], [load_optimizer], [statistics] and [max_epoch_new]
@@ -128,7 +130,7 @@ fi
 
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}-E=${shared_encoder_cls}-D=${deconv_class}
 # result_dir=result/${circuit}-aln=${num_alignment}-G=${graph}-async=${async_place}
-result_dir=result/test_ariane133_halo_10.0
+result_dir=result/test_ariane133_halo_10.0_2
 # result_dir=result/test_bp
 
 

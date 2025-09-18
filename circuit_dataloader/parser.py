@@ -10,7 +10,7 @@ import pandas as pd
 
 
 
-def parse_blk_tml(circuit:str, area_util:float, add_halo:bool, halo_width:float, halo_height:float, root:str="../FlexPlanner-via/data_openroad") -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], float, float]:
+def parse_blk_tml(circuit:str, area_util:float, add_halo:bool, halo_width:float, halo_height:float, root:str="../FlexPlanner-via/data_openroad_2") -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]], float, float]:
     """
     blk_wh_dict: {
         "[block_name]": {
@@ -115,7 +115,7 @@ def parse_blk_tml(circuit:str, area_util:float, add_halo:bool, halo_width:float,
     
     return blk_wh_dict, tml_xy_dict, float(chip_w), float(chip_h)
 
-def parse_blk_xyz(circuit: str, root:str="../FlexPlanner-via/data_openroad")->Dict[str, List[float]]:
+def parse_blk_xyz(circuit: str, root:str="../FlexPlanner-via/data_openroad_2")->Dict[str, List[float]]:
     """
     Return the (x,y,z) of the blocks given the fp.txt
     """
@@ -132,7 +132,7 @@ def parse_blk_xyz(circuit: str, root:str="../FlexPlanner-via/data_openroad")->Di
     return blk_xyz_dict
 
 
-def parse_net(circuit:str, root:str="../FlexPlanner-via/data_openroad") -> List[List[str]]:
+def parse_net(circuit:str, root:str="../FlexPlanner-via/data_openroad_2") -> List[List[str]]:
     """
     Return netlist, each net is a list consisting of str, the name of pin.
     """

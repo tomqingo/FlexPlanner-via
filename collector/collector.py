@@ -65,6 +65,9 @@ class Collector(object):
         env: Union[gym.Env, BaseVectorEnv],
         impl: str,
         design: str,
+        add_halo: bool,
+        halo_width: float,
+        halo_height: float,
         buffer: Optional[ReplayBuffer] = None,
         preprocess_fn: Optional[Callable[..., Batch]] = None,
         exploration_noise: bool = False,
@@ -85,6 +88,10 @@ class Collector(object):
         self._action_space = self.env.action_space
         self.impl = impl
         self.design = design
+
+        self.add_halo = add_halo
+        self.halo_width = halo_width
+        self.halo_height = halo_height
 
         # avoid creating attribute outside __init__
         self.reset(False)
@@ -433,7 +440,10 @@ class Collector(object):
                 if episode_count == 0 and self.save_fig and self.__num_epoch % self.__save_gap == 0:
                     for env_idx in env_ind_global:
                         fp_info = self.env.get_env_attr("fp_info", env_idx)[0]
-                        utils.save_final_floorplan(os.path.join(self.__fig_dir, "canvas-epoch={:06d}-env={:03d}.png".format(self.__num_epoch, env_idx)), fp_info, self.impl, self.design)
+                        if self.add_halo:
+                            utils.save_final_floorplan(os.path.join(self.__fig_dir, "canvas-epoch={:06d}-env={:03d}.png".format(self.__num_epoch, env_idx)), fp_info, self.impl, self.design, self.halo_height, self.halo_width)
+                        else:
+                            utils.save_final_floorplan(os.path.join(self.__fig_dir, "canvas-epoch={:06d}-env={:03d}.png".format(self.__num_epoch, env_idx)), fp_info, self.impl, self.design, 0.0, 0.0)
                 # [LOG]
                 info_batch = Batch(info)
                 episode_count += len(env_ind_local)

@@ -14,7 +14,8 @@ def run(command):
     print(command)
     os.system('/bin/bash -c \'{0}\''.format(command))
 
-def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, enable_text:bool=1) -> None:
+# save_final_floorplan
+def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, halo_height:float, halo_width:float, enable_text:bool=1) -> None:
     """
     draw and save the final floorplanning result.
     ALso save a .csv file with the same name as the image file.
@@ -25,6 +26,7 @@ def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, enable_
     #     "Movable": [0] * num_layer,
     # }
     df = pd.DataFrame()
+    # name2alignment_group
     name2alignment_group = fp_info.name2alignment_group
 
     fig, axes = plt.subplots(1, num_layer, figsize=(10, 6))
@@ -48,7 +50,9 @@ def save_final_floorplan(path:str, fp_info:FPInfo, impl:str, design:str, enable_
             # label = label if label_dict[label][block.grid_z] == 1 else None
             # axes[block.grid_z].add_patch(plt.Rectangle((block.grid_x, block.grid_y), block.grid_w, block.grid_h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3, label=label))
             if block.type == "Macro":
-                axes[block.grid_z].add_patch(plt.Rectangle((block.x+5.0, block.y+5.0), block.real_w, block.real_h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3))
+                axes[block.grid_z].add_patch(plt.Rectangle((block.x + halo_width, block.y + halo_height), block.real_w, block.real_h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3))
+            else:
+                axes[block.grid_z].add_patch(plt.Rectangle((block.x, block.y), block.w, block.h, fill=True, facecolor=facecolor, edgecolor="k", alpha=0.3))
             # text = str(block.idx)
             # text = block.name
             # if block.name in name2alignment_group:
